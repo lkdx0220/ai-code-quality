@@ -28,7 +28,7 @@
 | [pytest](https://github.com/pytest-dev/pytest) | 测试执行 | MIT | pytest-dev |
 | [pytest-cov](https://github.com/pytest-dev/pytest-cov) | 覆盖率统计 | MIT | pytest-dev |
 | [import-linter](https://github.com/seddony/import-linter) | 架构依赖契约检查 | **BSD 2-Clause** | seddony/import-linter |
-| DeepSec（本地工具，v0.2.0） | 安全扫描 L1/L2（硬编码密钥、危险写法、注入） | MIT | 本地源码仓库，经 CLI 调用 |
+| [DeepSec](https://github.com/Unclecheng-li/DeepSec) | 安全扫描 L1/L2（硬编码密钥、危险写法、注入） | MIT | Unclecheng-li/DeepSec |
 
 cq 自身代码为原创，以 MIT 许可证发布（见 `LICENSE`）。
 如果你在报告中引用 cq 的扫描结果，建议同时注明底层工具，例如
