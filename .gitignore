@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+audits/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+dist/
+build/
+# fixture 是自带 .git 的独立测试仓库（验收 4 需要它是 git 仓库），不入本仓库版本管理
+tests/fixtures/demo-flask-api/

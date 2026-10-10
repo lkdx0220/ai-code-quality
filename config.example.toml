@@ -1,0 +1,28 @@
+# cq 配置示例。复制到目标仓库根目录并改名为 cq.toml 即生效。
+# 优先级：默认值 < cq.toml < 环境变量（CQ_PYTHON / CQ_DEEPSEC_HOME / CQ_DEEPSEC_PYTHON / CQ_TIMEOUT） < 命令行参数
+
+[tool]
+# 跑外部工具（ruff/mypy/radon/vulture/pytest）用的 Python 解释器。
+# cq 装在隔离 venv（uv tool / pipx）时，把它指到装了这些工具的解释器。
+# python = "C:/Users/you/AppData/Local/Programs/Python/Python313/python.exe"
+
+# deepsec 以源码仓库形态存在时的路径（会自动注入 PYTHONPATH 调用，无需 pip 安装）。
+# 也可以用环境变量 CQ_DEEPSEC_HOME。
+# deepsec_home = "C:/Users/you/Desktop/AI开发模板/DeepSec"
+
+# 承载 deepsec 的解释器（默认同 python）。
+# deepsec_python = "C:/Python313/python.exe"
+
+# 单工具默认超时（秒），个别工具可在 [tool.timeout_overrides] 覆盖。
+# timeout_default = 300
+
+[tool.timeout_overrides]
+# pytest = 900
+# mypy = 600
+# deepsec = 600
+
+# 阈值（直接放在 [tool] 下）
+# coverage_threshold = 80.0     # 覆盖率阈值（%），低于报 finding
+# vulture_min_confidence = 60   # vulture 最低置信度（%）
+# max_cc_rank = "D"             # 圈复杂度上报门槛（D 及更差；可选 A-F）
+# min_mi_rank = "C"             # 可维护性指数上报门槛（C 及更差）
