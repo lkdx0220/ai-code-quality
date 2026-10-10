@@ -162,8 +162,8 @@ def reapply(project_root: Path, run_findings: list[dict[str, object]]) -> dict[s
 
     matched = unmatched = refreshed = 0
     for item in items:
-        hit: dict[str, object] | None = by_id.get(str(item.get("id")))
-        sig: tuple[str, str, str, str] | None = None
+        old_id = str(item.get("id"))
+        hit: dict[str, object] | None = by_id.get(old_id)
         if hit is None:
             sig = _entry_sig(item)
             if sig is not None:
@@ -174,16 +174,15 @@ def reapply(project_root: Path, run_findings: list[dict[str, object]]) -> dict[s
                     by_sig[sig] = cands
         if hit is not None:
             matched += 1
-            final_sig = _sig_of(hit)
-            if _entry_sig(item) != final_sig:
-                refreshed += 1
+            if str(hit["id"]) != old_id:
+                refreshed += 1  # id 被重写（行号漂移后按签名找回）
             item["id"] = str(hit["id"])
             (
                 item["sig_source"],
                 item["sig_rule"],
                 item["sig_file"],
                 item["sig_message"],
-            ) = final_sig
+            ) = _sig_of(hit)
         else:
             unmatched += 1
     save(project_root, items)
