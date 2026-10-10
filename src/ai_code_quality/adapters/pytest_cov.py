@@ -77,6 +77,17 @@ class PytestCovAdapter(Adapter):
                 cmd += ["--cov", str(d)]
             cmd += [f"--cov-report=json:{cov_json}"]
         env = {"COVERAGE_FILE": str(ctx.raw_dir / ".coverage")}
+        # 被测包可能没装进工具解释器（如 src 布局未 pip install -e），
+        # 把项目根（和 src/）加进 PYTHONPATH，否则 pytest 收集时直接 ImportError
+        import os
+
+        path_parts: list[str] = [str(ctx.project_root)]
+        src_dir = ctx.project_root / "src"
+        if src_dir.is_dir():
+            path_parts.append(str(src_dir))
+        if os.environ.get("PYTHONPATH"):
+            path_parts.append(os.environ["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(path_parts)
         proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name),
                        cwd=ctx.project_root, extra_env=env)
         raw_files.append(self.write_raw(ctx, "pytest.txt", proc.stdout + ("\n--stderr--\n" + proc.stderr if proc.stderr else "")))
