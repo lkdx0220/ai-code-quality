@@ -89,8 +89,11 @@ def run_scan(
         json.dumps(redact_obj(summary), ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (run_dir / "findings.json").write_text(
-        json.dumps(redact_obj({"run_id": run_id, "findings": [f.to_dict() for f in findings]}),
-                   ensure_ascii=False, indent=2),
+        json.dumps(
+            redact_obj({"run_id": run_id, "findings": [f.to_dict() for f in findings]}),
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
     from .report import build_report_md
@@ -98,8 +101,14 @@ def run_scan(
     (run_dir / "report.md").write_text(build_report_md(summary, findings), encoding="utf-8")
 
     exit_code = 2 if any(r.status in ("error", "timeout") for r in results) else 0
-    return ScanOutput(run_id=run_id, run_dir=run_dir, summary=summary,
-                      findings=findings, results=results, exit_code=exit_code)
+    return ScanOutput(
+        run_id=run_id,
+        run_dir=run_dir,
+        summary=summary,
+        findings=findings,
+        results=results,
+        exit_code=exit_code,
+    )
 
 
 def _build_summary(

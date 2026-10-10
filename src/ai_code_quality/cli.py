@@ -21,23 +21,53 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_scan = sub.add_parser("scan", help="扫描项目并生成 audits/<run_id>/ 报告（只读，不改代码）")
     p_scan.add_argument("--project", default=".", help="项目路径（默认当前目录）")
-    p_scan.add_argument("--scope", choices=["full", "changed"], default="full",
-                        help="full=全量（默认）；changed=只扫 git 变更的 .py 文件")
-    p_scan.add_argument("--format", choices=["md", "json"], default="md",
-                        help="控制台摘要格式（report.md / findings.json / summary.json 总是都会生成）")
-    p_scan.add_argument("--timeout", type=int, default=None, help="单工具默认超时秒数（默认 300，pytest/mypy/deepsec 可在 cq.toml 单独覆盖）")
-    p_scan.add_argument("--adapters", default=None,
-                        help=f"逗号分隔的 adapter 子集（可选：{','.join(ADAPTER_NAMES)}）")
-    p_scan.add_argument("--python", default=None, help="跑外部工具用的 Python 解释器（默认当前解释器）")
-    p_scan.add_argument("--deepsec-home", default=None, help="deepsec 源码仓库路径（未 pip 安装 deepsec 时用）")
-    p_scan.add_argument("--deepsec-python", default=None, help="承载 deepsec 的 Python 解释器（默认同 --python）")
+    p_scan.add_argument(
+        "--scope",
+        choices=["full", "changed"],
+        default="full",
+        help="full=全量（默认）；changed=只扫 git 变更的 .py 文件",
+    )
+    p_scan.add_argument(
+        "--format",
+        choices=["md", "json"],
+        default="md",
+        help="控制台摘要格式（report.md / findings.json / summary.json 总是都会生成）",
+    )
+    p_scan.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="单工具默认超时秒数（默认 300，pytest/mypy/deepsec 可在 cq.toml 单独覆盖）",
+    )
+    p_scan.add_argument(
+        "--adapters",
+        default=None,
+        help=f"逗号分隔的 adapter 子集（可选：{','.join(ADAPTER_NAMES)}）",
+    )
+    p_scan.add_argument(
+        "--python", default=None, help="跑外部工具用的 Python 解释器（默认当前解释器）"
+    )
+    p_scan.add_argument(
+        "--deepsec-home", default=None, help="deepsec 源码仓库路径（未 pip 安装 deepsec 时用）"
+    )
+    p_scan.add_argument(
+        "--deepsec-python", default=None, help="承载 deepsec 的 Python 解释器（默认同 --python）"
+    )
     p_scan.add_argument("--no-deepsec", action="store_true", help="跳过 deepsec 安全扫描")
 
     p_doc = sub.add_parser("doctor", help="环境体检：探测 8 个外部工具，缺什么给什么安装命令")
-    p_doc.add_argument("--format", choices=["md", "json"], default="md",
-                       help="控制台输出格式（json 供 Agent 消费）")
-    p_doc.add_argument("--python", default=None, help="探测用的 Python 解释器（默认当前解释器 / CQ_PYTHON）")
-    p_doc.add_argument("--deepsec-home", default=None, help="deepsec 源码仓库路径（探测源码形态用）")
+    p_doc.add_argument(
+        "--format",
+        choices=["md", "json"],
+        default="md",
+        help="控制台输出格式（json 供 Agent 消费）",
+    )
+    p_doc.add_argument(
+        "--python", default=None, help="探测用的 Python 解释器（默认当前解释器 / CQ_PYTHON）"
+    )
+    p_doc.add_argument(
+        "--deepsec-home", default=None, help="deepsec 源码仓库路径（探测源码形态用）"
+    )
     p_doc.add_argument("--deepsec-python", default=None, help="承载 deepsec 的解释器")
 
     # Phase 2+ 的占位：提前声明退出码语义，避免下游 agent 依赖错误行为
@@ -89,7 +119,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if summary["all_available"] else 2
 
     if args.command != "scan":
-        print(f"错误：`cq {args.command}` 属于 Phase 2+，本次未实现。当前可用：cq scan / cq doctor", file=sys.stderr)
+        print(
+            f"错误：`cq {args.command}` 属于 Phase 2+，本次未实现。当前可用：cq scan / cq doctor",
+            file=sys.stderr,
+        )
         return 1
 
     from .config import Config
@@ -128,11 +161,17 @@ def main(argv: list[str] | None = None) -> int:
 
         print(build_console_output(out.summary, out.findings))
         if out.exit_code == 2:
-            print("\n注意：有工具执行出错/超时（status=error/timeout），上述结果不完整。", file=sys.stderr)
+            print(
+                "\n注意：有工具执行出错/超时（status=error/timeout），上述结果不完整。",
+                file=sys.stderr,
+            )
         runnable = [r for r in out.results if r.status == "ok"]
         if out.results and not runnable:
-            print("\n警告：所有工具都 skipped，本次扫描没有产生任何有效结论。"
-                  "请检查工具安装或 --python 指向的解释器。", file=sys.stderr)
+            print(
+                "\n警告：所有工具都 skipped，本次扫描没有产生任何有效结论。"
+                "请检查工具安装或 --python 指向的解释器。",
+                file=sys.stderr,
+            )
     return out.exit_code
 
 

@@ -13,11 +13,36 @@ from pathlib import Path
 
 # 这些目录一定不进扫描目标（venv、缓存、构建产物、audits 自身……）
 EXCLUDE_DIR_NAMES = {
-    ".git", ".hg", ".svn", ".tox", ".nox", ".venv", "venv", "env", ".env",
-    ".mypy_cache", ".ruff_cache", ".pytest_cache", ".hypothesis",
-    "node_modules", "audits", "build", "dist", "out", "target", "bin", "obj",
-    "htmlcov", ".idea", ".vscode", ".eggs", "site-packages", ".cq_cache",
-    "__pycache__", ".zcode", ".dsh",
+    ".git",
+    ".hg",
+    ".svn",
+    ".tox",
+    ".nox",
+    ".venv",
+    "venv",
+    "env",
+    ".env",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".hypothesis",
+    "node_modules",
+    "audits",
+    "build",
+    "dist",
+    "out",
+    "target",
+    "bin",
+    "obj",
+    "htmlcov",
+    ".idea",
+    ".vscode",
+    ".eggs",
+    "site-packages",
+    ".cq_cache",
+    "__pycache__",
+    ".zcode",
+    ".dsh",
 }
 EXCLUDE_DIR_PATTERNS = ("*.egg-info",)
 
@@ -157,10 +182,14 @@ def get_git_info(root: Path) -> GitInfo:
     branch = git("rev-parse", "--abbrev-ref", "HEAD") or ""
     status = git("status", "--porcelain") or ""
     changed = [ln[3:].strip('"') for ln in status.splitlines() if ln.strip()]
-    return GitInfo(is_repo=True, commit=head, branch=branch, dirty=len(changed), changed_files=changed)
+    return GitInfo(
+        is_repo=True, commit=head, branch=branch, dirty=len(changed), changed_files=changed
+    )
 
 
-def resolve_targets(project_root: Path, *, scope: str = "full", git_info: GitInfo | None = None) -> ScanTargets:
+def resolve_targets(
+    project_root: Path, *, scope: str = "full", git_info: GitInfo | None = None
+) -> ScanTargets:
     root = project_root.resolve()
     st = ScanTargets(project_root=root, scope=scope)
 

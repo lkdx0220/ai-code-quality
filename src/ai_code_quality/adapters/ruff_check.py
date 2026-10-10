@@ -41,29 +41,62 @@ class RuffCheckAdapter(Adapter):
 
         ver = probe([ctx.cfg.python, "-m", "ruff", "--version"])
         if ver.not_found or ver.returncode != 0:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason=f"ruff 不可用（python -m ruff --version 失败: {ver.stderr.strip()[:120]}）")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                reason=f"ruff 不可用（python -m ruff --version 失败: {ver.stderr.strip()[:120]}）",
+            )
         version = ver.stdout.strip().replace("ruff ", "")
 
         if not ctx.targets:
-            return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                                 reason="没有可扫描的 .py 目标")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="ok",
+                version=version,
+                reason="没有可扫描的 .py 目标",
+            )
 
-        cmd = [ctx.cfg.python, "-m", "ruff", "check", "--no-cache", "--output-format", "json",
-               *[str(t) for t in ctx.targets]]
+        cmd = [
+            ctx.cfg.python,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--output-format",
+            "json",
+            *[str(t) for t in ctx.targets],
+        ]
         proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
         raw_ref = self.write_raw(ctx, "ruff-check.json", proc.stdout or "[]")
         if proc.timed_out:
-            return AdapterResult(name=self.name, tool=self.tool, status="timeout", version=version,
-                                 reason=f"ruff check 超时（>{ctx.cfg.timeout_for(self.name)}s）", raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="timeout",
+                version=version,
+                reason=f"ruff check 超时（>{ctx.cfg.timeout_for(self.name)}s）",
+                raw_files=[raw_ref],
+            )
         if proc.not_found:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped", version=version,
-                                 reason="无法启动 ruff 进程")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                version=version,
+                reason="无法启动 ruff 进程",
+            )
         # ruff: 0=干净 1=有违规 2=出错
         if proc.returncode not in (0, 1):
-            return AdapterResult(name=self.name, tool=self.tool, status="error", version=version,
-                                 reason=f"ruff check 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}",
-                                 raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="error",
+                version=version,
+                reason=f"ruff check 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}",
+                raw_files=[raw_ref],
+            )
 
         findings: list[Finding] = []
         for item in parse_ruff_json(proc.stdout):
@@ -71,18 +104,27 @@ class RuffCheckAdapter(Adapter):
             category, severity = classify_ruff(code)
             loc = item.get("location") or {}
             fix = item.get("fix")
-            findings.append(finding(
-                ctx,
-                source="ruff",
-                category=category,
-                severity=severity,
-                file=str(item.get("filename") or ""),
-                line=int(loc.get("row") or 0),
-                message=str(item.get("message") or code),
-                rule=code,
-                auto_fixable=bool(fix),
-                fix_hint=f"ruff rule {code}" + ("（可 ruff --fix 自动修复）" if fix else ""),
-                raw_ref=raw_ref,
-            ))
-        return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                             duration_s=proc.duration_s, findings=findings, raw_files=[raw_ref])
+            findings.append(
+                finding(
+                    ctx,
+                    source="ruff",
+                    category=category,
+                    severity=severity,
+                    file=str(item.get("filename") or ""),
+                    line=int(loc.get("row") or 0),
+                    message=str(item.get("message") or code),
+                    rule=code,
+                    auto_fixable=bool(fix),
+                    fix_hint=f"ruff rule {code}" + ("（可 ruff --fix 自动修复）" if fix else ""),
+                    raw_ref=raw_ref,
+                )
+            )
+        return AdapterResult(
+            name=self.name,
+            tool=self.tool,
+            status="ok",
+            version=version,
+            duration_s=proc.duration_s,
+            findings=findings,
+            raw_files=[raw_ref],
+        )

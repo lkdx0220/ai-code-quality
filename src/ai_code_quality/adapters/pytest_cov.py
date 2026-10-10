@@ -53,13 +53,18 @@ class PytestCovAdapter(Adapter):
         from ..runner import probe, run_cmd
 
         if not ctx.has_tests or not ctx.test_paths:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason="未发现测试（无 tests/ 目录、test_*.py 或 pytest 配置）")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                reason="未发现测试（无 tests/ 目录、test_*.py 或 pytest 配置）",
+            )
 
         ver = probe([ctx.cfg.python, "-m", "pytest", "--version"])
         if ver.not_found or ver.returncode != 0:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason="pytest 不可用（未安装）")
+            return AdapterResult(
+                name=self.name, tool=self.tool, status="skipped", reason="pytest 不可用（未安装）"
+            )
         version = ver.stdout.strip().splitlines()[0] if ver.stdout.strip() else ""
 
         cov_probe = probe([ctx.cfg.python, "-c", "import pytest_cov"])
@@ -69,8 +74,16 @@ class PytestCovAdapter(Adapter):
         findings: list[Finding] = []
 
         cov_json = ctx.raw_dir / "coverage.json"
-        cmd = [ctx.cfg.python, "-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider",
-               *[str(p) for p in ctx.test_paths]]
+        cmd = [
+            ctx.cfg.python,
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            *[str(p) for p in ctx.test_paths],
+        ]
         if has_cov and ctx.source_dirs:
             # --cov 一次只吃一个值，多目录必须重复传 --cov，否则多余值会变成 pytest 位置参数
             for d in ctx.source_dirs:
@@ -88,45 +101,79 @@ class PytestCovAdapter(Adapter):
         if os.environ.get("PYTHONPATH"):
             path_parts.append(os.environ["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(path_parts)
-        proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name),
-                       cwd=ctx.project_root, extra_env=env)
-        raw_files.append(self.write_raw(ctx, "pytest.txt", proc.stdout + ("\n--stderr--\n" + proc.stderr if proc.stderr else "")))
+        proc = run_cmd(
+            cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root, extra_env=env
+        )
+        raw_files.append(
+            self.write_raw(
+                ctx,
+                "pytest.txt",
+                proc.stdout + ("\n--stderr--\n" + proc.stderr if proc.stderr else ""),
+            )
+        )
         if proc.timed_out:
-            return AdapterResult(name=self.name, tool=self.tool, status="timeout", version=version,
-                                 reason=f"pytest 超时（>{ctx.cfg.timeout_for(self.name)}s）", raw_files=raw_files)
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="timeout",
+                version=version,
+                reason=f"pytest 超时（>{ctx.cfg.timeout_for(self.name)}s）",
+                raw_files=raw_files,
+            )
         if proc.not_found:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped", version=version,
-                                 reason="无法启动 pytest 进程")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                version=version,
+                reason="无法启动 pytest 进程",
+            )
 
         # 无论退出码如何，先把能解析的失败/错误测试都收进来（部分结果也是证据）
         for kind, test_id, detail in parse_pytest_failures(proc.stdout):
             file = test_id.split("::")[0]
-            findings.append(finding(
-                ctx,
-                source="pytest",
-                category="test",
-                severity="high",
-                file=file,
-                line=0,
-                message=f"{'测试失败' if kind == 'FAILED' else '测试错误'}: {test_id}" + (f"（{detail[:100]}）" if detail else ""),
-                rule=f"test-{kind.lower()}",
-                raw_ref=raw_files[0],
-            ))
+            findings.append(
+                finding(
+                    ctx,
+                    source="pytest",
+                    category="test",
+                    severity="high",
+                    file=file,
+                    line=0,
+                    message=f"{'测试失败' if kind == 'FAILED' else '测试错误'}: {test_id}"
+                    + (f"（{detail[:100]}）" if detail else ""),
+                    rule=f"test-{kind.lower()}",
+                    raw_ref=raw_files[0],
+                )
+            )
 
         if proc.returncode not in (0, 1, 5):
             # 2=interrupted 3=internal 4=usage（环境缺依赖等），携带已解析的部分结果
             tail = [ln for ln in (proc.stderr + proc.stdout).splitlines() if ln.strip()][-3:]
-            return AdapterResult(name=self.name, tool=self.tool, status="error", version=version,
-                                 reason=f"pytest 退出码 {proc.returncode}: {' / '.join(tail)[:300]}",
-                                 findings=findings, raw_files=raw_files)
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="error",
+                version=version,
+                reason=f"pytest 退出码 {proc.returncode}: {' / '.join(tail)[:300]}",
+                findings=findings,
+                raw_files=raw_files,
+            )
 
         if proc.returncode == 5:
-            findings.append(finding(
-                ctx,
-                source="pytest", category="test", severity="medium",
-                file="", line=0, message="pytest 没有收集到任何测试", rule="no-tests-collected",
-                raw_ref=raw_files[0],
-            ))
+            findings.append(
+                finding(
+                    ctx,
+                    source="pytest",
+                    category="test",
+                    severity="medium",
+                    file="",
+                    line=0,
+                    message="pytest 没有收集到任何测试",
+                    rule="no-tests-collected",
+                    raw_ref=raw_files[0],
+                )
+            )
 
         if has_cov and cov_json.is_file():
             cov_text = cov_json.read_text(encoding="utf-8", errors="replace")
@@ -134,19 +181,30 @@ class PytestCovAdapter(Adapter):
             cov = parse_coverage_json(cov_text)
             if cov:
                 if cov["percent"] < ctx.cfg.coverage_threshold:
-                    findings.append(finding(
-                        ctx,
-                        source="pytest", category="test",
-                        severity="medium" if cov["percent"] >= 50 else "high",
-                        file="", line=0,
-                        message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
-                                f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
-                        rule="coverage",
-                        fix_hint="优先给核心分支补测试",
-                        raw_ref=raw_files[-1],
-                    ))
+                    findings.append(
+                        finding(
+                            ctx,
+                            source="pytest",
+                            category="test",
+                            severity="medium" if cov["percent"] >= 50 else "high",
+                            file="",
+                            line=0,
+                            message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
+                            f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
+                            rule="coverage",
+                            fix_hint="优先给核心分支补测试",
+                            raw_ref=raw_files[-1],
+                        )
+                    )
         elif not has_cov:
             ctx.notes.append("pytest-cov 未安装，覆盖率检查跳过（其余测试检查正常）")
 
-        return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                             duration_s=proc.duration_s, findings=findings, raw_files=raw_files)
+        return AdapterResult(
+            name=self.name,
+            tool=self.tool,
+            status="ok",
+            version=version,
+            duration_s=proc.duration_s,
+            findings=findings,
+            raw_files=raw_files,
+        )

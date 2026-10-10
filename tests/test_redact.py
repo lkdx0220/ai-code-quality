@@ -39,7 +39,10 @@ def test_redact_private_key_block():
 
 
 def test_redact_obj_recursive():
-    obj = {"a": ["sk-ant-1234567890abcdef1234567890abc"], "nested": {"token": "xoxb-1234567890abcdef123"}}
+    obj = {
+        "a": ["sk-ant-1234567890abcdef1234567890abc"],
+        "nested": {"token": "xoxb-1234567890abcdef123"},
+    }
     out = json.dumps(redact_obj(obj))
     assert "sk-ant-" not in out and "xoxb-" not in out
 

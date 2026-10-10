@@ -86,7 +86,9 @@ class DeepsecAdapter(Adapter):
     tool = "deepsec"
     description = "deepsec shield scan L1+L2（安全：密钥/危险写法/注入）"
 
-    def _resolve(self, ctx: ScanContext) -> tuple[list[str] | None, dict[str, str] | None, str, str]:
+    def _resolve(
+        self, ctx: ScanContext
+    ) -> tuple[list[str] | None, dict[str, str] | None, str, str]:
         """→ (基础命令前缀, 附加环境变量, 版本号, 探测说明)；不可用返回 (None, None, "", reason)。"""
         from ..runner import probe
 
@@ -101,22 +103,38 @@ class DeepsecAdapter(Adapter):
             env = {"PYTHONPATH": str(home_path.resolve())}
             r2 = probe([py, "-m", "deepsec", "--help"], timeout=60, extra_env=env)
             if r2.returncode == 0:
-                return [py, "-m", "deepsec"], env, _version_of(py, home_path), f"源码形态（PYTHONPATH={home}）"
+                return (
+                    [py, "-m", "deepsec"],
+                    env,
+                    _version_of(py, home_path),
+                    f"源码形态（PYTHONPATH={home}）",
+                )
             return None, None, "", f"deepsec 不可用（{home} 下 python -m deepsec 失败）"
-        return None, None, "", "deepsec 不可用（未 pip 安装，且未配置 CQ_DEEPSEC_HOME / cq.toml deepsec_home）"
+        return (
+            None,
+            None,
+            "",
+            "deepsec 不可用（未 pip 安装，且未配置 CQ_DEEPSEC_HOME / cq.toml deepsec_home）",
+        )
 
     def run(self, ctx: ScanContext) -> AdapterResult:
         from ..runner import run_cmd
 
         if ctx.cfg.no_deepsec:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason="--no-deepsec 显式关闭")
+            return AdapterResult(
+                name=self.name, tool=self.tool, status="skipped", reason="--no-deepsec 显式关闭"
+            )
         base, env, version, note = self._resolve(ctx)
         if base is None:
             return AdapterResult(name=self.name, tool=self.tool, status="skipped", reason=note)
         if not ctx.targets:
-            return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                                 reason="没有可扫描的 .py 目标")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="ok",
+                version=version,
+                reason="没有可扫描的 .py 目标",
+            )
 
         findings: list[Finding] = []
         raw_files: list[str] = []
@@ -126,19 +144,40 @@ class DeepsecAdapter(Adapter):
         for layer in ("l1", "l2"):
             for i, target in enumerate(ctx.targets):
                 out = ctx.raw_dir / f"deepsec-{layer}-{i}.json"
-                cmd = [*base, "shield", "scan", str(target),
-                       "--layer", layer, "--format", "json", "--output", str(out)]
-                proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name),
-                               cwd=ctx.raw_dir, extra_env=env or None)
+                cmd = [
+                    *base,
+                    "shield",
+                    "scan",
+                    str(target),
+                    "--layer",
+                    layer,
+                    "--format",
+                    "json",
+                    "--output",
+                    str(out),
+                ]
+                proc = run_cmd(
+                    cmd,
+                    timeout=ctx.cfg.timeout_for(self.name),
+                    cwd=ctx.raw_dir,
+                    extra_env=env or None,
+                )
                 total_s += proc.duration_s
                 if proc.timed_out:
-                    return AdapterResult(name=self.name, tool=self.tool, status="timeout", version=version,
-                                         reason=f"deepsec {layer} 超时（>{ctx.cfg.timeout_for(self.name)}s）",
-                                         raw_files=raw_files)
+                    return AdapterResult(
+                        name=self.name,
+                        tool=self.tool,
+                        status="timeout",
+                        version=version,
+                        reason=f"deepsec {layer} 超时（>{ctx.cfg.timeout_for(self.name)}s）",
+                        raw_files=raw_files,
+                    )
                 if proc.returncode not in (0, 1):
                     # 找到高危时 deepsec 可能以非零退出；只要产物在且能解析就继续，否则记错误
                     if not out.is_file():
-                        errors.append(f"{layer}: 退出码 {proc.returncode} {proc.stderr.strip()[:150]}")
+                        errors.append(
+                            f"{layer}: 退出码 {proc.returncode} {proc.stderr.strip()[:150]}"
+                        )
                         continue
                 if out.is_file():
                     text = out.read_text(encoding="utf-8", errors="replace")
@@ -148,29 +187,52 @@ class DeepsecAdapter(Adapter):
                     for item in parse_deepsec_json(text):
                         sev = _SEV_MAP.get(str(item.get("severity", "info")).lower(), "info")
                         rule = str(item.get("detection_rule") or item.get("type") or layer)
-                        findings.append(finding(
-                            ctx,
-                            source="deepsec",
-                            category="security",
-                            severity=sev,
-                            file=str(item.get("target") or item.get("file") or ""),
-                            line=int(item.get("line") or 0),
-                            message=str(item.get("title") or item.get("message") or item.get("type") or "安全问题"),
-                            rule=rule,
-                            evidence=_safe_evidence(rule, str(item.get("type") or ""),
-                                                    str(item.get("evidence") or "")),
-                            fix_hint=str(item.get("suggestion") or ""),
-                            confidence=_conf_to_word(item.get("confidence")),
-                            raw_ref=rel,
-                        ))
+                        findings.append(
+                            finding(
+                                ctx,
+                                source="deepsec",
+                                category="security",
+                                severity=sev,
+                                file=str(item.get("target") or item.get("file") or ""),
+                                line=int(item.get("line") or 0),
+                                message=str(
+                                    item.get("title")
+                                    or item.get("message")
+                                    or item.get("type")
+                                    or "安全问题"
+                                ),
+                                rule=rule,
+                                evidence=_safe_evidence(
+                                    rule,
+                                    str(item.get("type") or ""),
+                                    str(item.get("evidence") or ""),
+                                ),
+                                fix_hint=str(item.get("suggestion") or ""),
+                                confidence=_conf_to_word(item.get("confidence")),
+                                raw_ref=rel,
+                            )
+                        )
 
         if errors and not findings:
-            return AdapterResult(name=self.name, tool=self.tool, status="error", version=version,
-                                 reason="; ".join(errors), raw_files=raw_files)
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="error",
+                version=version,
+                reason="; ".join(errors),
+                raw_files=raw_files,
+            )
         status = "ok" if not errors else "error"
-        return AdapterResult(name=self.name, tool=self.tool, status=status, version=version,
-                             duration_s=total_s, findings=findings, raw_files=raw_files,
-                             reason=f"{note}; 部分目标失败: {'; '.join(errors)}" if errors else "")
+        return AdapterResult(
+            name=self.name,
+            tool=self.tool,
+            status=status,
+            version=version,
+            duration_s=total_s,
+            findings=findings,
+            raw_files=raw_files,
+            reason=f"{note}; 部分目标失败: {'; '.join(errors)}" if errors else "",
+        )
 
 
 def _version_of(python: str, home: Path | None) -> str:

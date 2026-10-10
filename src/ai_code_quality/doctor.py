@@ -7,14 +7,13 @@ README / PROMPT.md / Agent 都只教"跑 doctor、按提示装"，不复制安�
 
 from __future__ import annotations
 
-import json
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from .config import Config
-from .runner import ProcResult, probe
+from .runner import probe
 
 # 实测通过的版本（2026-10，Python 3.13 / Windows）。
 # ruff 等工具的默认规则集会随版本变化，版本差异影响结果可比性。
@@ -63,7 +62,7 @@ def _clean_version(raw: str, prefixes: tuple[str, ...] = ()) -> str:
     line = raw.strip().splitlines()[0].strip() if raw.strip() else ""
     for p in prefixes:
         if line.lower().startswith(p.lower()):
-            line = line[len(p):].strip()
+            line = line[len(p) :].strip()
     return line
 
 
@@ -74,28 +73,40 @@ def _first_line(stderr: str) -> str:
     return ""
 
 
-def _check_pymod(py: str, module: str, name: str, tool: str, install: str,
-                  note: str, optional: bool, prefix: str) -> ToolCheck:
+def _check_pymod(
+    py: str, module: str, name: str, tool: str, install: str, note: str, optional: bool, prefix: str
+) -> ToolCheck:
     r = probe([py, "-m", module, "--version"], timeout=30)
     ok = (not r.not_found) and r.returncode == 0
     return ToolCheck(
-        name=name, tool=tool, available=ok,
+        name=name,
+        tool=tool,
+        available=ok,
         version=_clean_version(r.stdout, (prefix,)) if ok else "",
-        install=install, note=note, optional=optional,
+        install=install,
+        note=note,
+        optional=optional,
         detail="" if ok else _first_line(r.stderr) or "python -m 探测失败",
     )
 
 
-def _check_import(py: str, module: str, name: str, tool: str, install: str,
-                  note: str, optional: bool) -> ToolCheck:
+def _check_import(
+    py: str, module: str, name: str, tool: str, install: str, note: str, optional: bool
+) -> ToolCheck:
     """适用于没有 python -m 入口、只能 import 探测的包（如 pytest_cov）。"""
-    r = probe([py, "-c", f"import {module}; print(getattr({module}, '__version__', 'unknown'))"],
-              timeout=30)
+    r = probe(
+        [py, "-c", f"import {module}; print(getattr({module}, '__version__', 'unknown'))"],
+        timeout=30,
+    )
     ok = (not r.not_found) and r.returncode == 0
     return ToolCheck(
-        name=name, tool=tool, available=ok,
+        name=name,
+        tool=tool,
+        available=ok,
         version=r.stdout.strip() if ok else "",
-        install=install, note=note, optional=optional,
+        install=install,
+        note=note,
+        optional=optional,
         detail="" if ok else _first_line(r.stderr) or "import 探测失败",
     )
 
@@ -109,30 +120,57 @@ def _check_deepsec(cfg: Config) -> ToolCheck:
     )
     r = probe([py, "-m", "deepsec", "--help"], timeout=60)
     if r.returncode == 0:
-        v = probe([py, "-c", "import importlib.metadata as m; print(m.version('deepsec'))"], timeout=30)
+        v = probe(
+            [py, "-c", "import importlib.metadata as m; print(m.version('deepsec'))"], timeout=30
+        )
         version = v.stdout.strip() if v.returncode == 0 else "unknown"
-        return ToolCheck(name="deepsec", tool="deepsec", available=True,
-                         version=version, form="pip 安装",
-                         note="安全扫描 L1/L2（缺失时安全维度无结论，其余工具不受影响）",
-                         optional=True, install=install_pip)
+        return ToolCheck(
+            name="deepsec",
+            tool="deepsec",
+            available=True,
+            version=version,
+            form="pip 安装",
+            note="安全扫描 L1/L2（缺失时安全维度无结论，其余工具不受影响）",
+            optional=True,
+            install=install_pip,
+        )
     if cfg.deepsec_home:
         home = Path(cfg.deepsec_home)
-        r2 = probe([py, "-m", "deepsec", "--help"], timeout=60,
-                   extra_env={"PYTHONPATH": str(home.resolve())})
+        r2 = probe(
+            [py, "-m", "deepsec", "--help"],
+            timeout=60,
+            extra_env={"PYTHONPATH": str(home.resolve())},
+        )
         if r2.returncode == 0:
             version = _deepsec_source_version(home)
-            return ToolCheck(name="deepsec", tool="deepsec", available=True,
-                             version=version, form=f"源码仓库（CQ_DEEPSEC_HOME={cfg.deepsec_home}）",
-                             note="安全扫描 L1/L2（缺失时安全维度无结论，其余工具不受影响）",
-                             optional=True, install=install_pip)
-        return ToolCheck(name="deepsec", tool="deepsec", available=False,
-                         install=f"{install_pip}\n或：{install_src}",
-                         note="安全扫描 L1/L2", optional=True,
-                         detail=f"CQ_DEEPSEC_HOME={cfg.deepsec_home} 下探测失败：{_first_line(r2.stderr)}")
-    return ToolCheck(name="deepsec", tool="deepsec", available=False,
-                     install=f"{install_pip}\n或：{install_src}",
-                     note="安全扫描 L1/L2（缺失时安全维度无结论，其余工具不受影响）",
-                     optional=True, detail="未 pip 安装，且未设置 CQ_DEEPSEC_HOME")
+            return ToolCheck(
+                name="deepsec",
+                tool="deepsec",
+                available=True,
+                version=version,
+                form=f"源码仓库（CQ_DEEPSEC_HOME={cfg.deepsec_home}）",
+                note="安全扫描 L1/L2（缺失时安全维度无结论，其余工具不受影响）",
+                optional=True,
+                install=install_pip,
+            )
+        return ToolCheck(
+            name="deepsec",
+            tool="deepsec",
+            available=False,
+            install=f"{install_pip}\n或：{install_src}",
+            note="安全扫描 L1/L2",
+            optional=True,
+            detail=f"CQ_DEEPSEC_HOME={cfg.deepsec_home} 下探测失败：{_first_line(r2.stderr)}",
+        )
+    return ToolCheck(
+        name="deepsec",
+        tool="deepsec",
+        available=False,
+        install=f"{install_pip}\n或：{install_src}",
+        note="安全扫描 L1/L2（缺失时安全维度无结论，其余工具不受影响）",
+        optional=True,
+        detail="未 pip 安装，且未设置 CQ_DEEPSEC_HOME",
+    )
 
 
 def _deepsec_source_version(home: Path) -> str:
@@ -147,24 +185,66 @@ def _deepsec_source_version(home: Path) -> str:
         return "unknown（源码）"
 
 
-def run_doctor(cfg: Config, probe_fn: Callable[[], list[ToolCheck]] | None = None) -> list[ToolCheck]:
+def run_doctor(
+    cfg: Config, probe_fn: Callable[[], list[ToolCheck]] | None = None
+) -> list[ToolCheck]:
     """probe_fn 供测试注入；默认真实探测。"""
     if probe_fn is not None:
         return probe_fn()
     py = cfg.python
     checks = [
-        _check_pymod(py, "ruff", "ruff-check", "ruff", "pip install ruff",
-                     "lint / 未使用导入 / 危险写法 / 格式检查（核心）", False, "ruff"),
-        _check_pymod(py, "mypy", "mypy", "mypy", "pip install mypy",
-                     "静态类型检查（核心）", False, "mypy"),
-        _check_pymod(py, "radon", "radon", "radon", "pip install radon",
-                     "圈复杂度 / 可维护性指数（核心）", False, "radon"),
-        _check_pymod(py, "vulture", "vulture", "vulture", "pip install vulture",
-                     "死代码检测（核心）", False, "vulture"),
-        _check_pymod(py, "pytest", "pytest", "pytest", "pip install pytest",
-                     "测试执行（核心；仓库无测试时自动 skipped）", False, "pytest"),
-        _check_import(py, "pytest_cov", "pytest-cov", "pytest-cov", "pip install pytest-cov",
-                      "覆盖率统计（可选：缺失时 pytest 照跑，仅无覆盖率结论）", True),
+        _check_pymod(
+            py,
+            "ruff",
+            "ruff-check",
+            "ruff",
+            "pip install ruff",
+            "lint / 未使用导入 / 危险写法 / 格式检查（核心）",
+            False,
+            "ruff",
+        ),
+        _check_pymod(
+            py, "mypy", "mypy", "mypy", "pip install mypy", "静态类型检查（核心）", False, "mypy"
+        ),
+        _check_pymod(
+            py,
+            "radon",
+            "radon",
+            "radon",
+            "pip install radon",
+            "圈复杂度 / 可维护性指数（核心）",
+            False,
+            "radon",
+        ),
+        _check_pymod(
+            py,
+            "vulture",
+            "vulture",
+            "vulture",
+            "pip install vulture",
+            "死代码检测（核心）",
+            False,
+            "vulture",
+        ),
+        _check_pymod(
+            py,
+            "pytest",
+            "pytest",
+            "pytest",
+            "pip install pytest",
+            "测试执行（核心；仓库无测试时自动 skipped）",
+            False,
+            "pytest",
+        ),
+        _check_import(
+            py,
+            "pytest_cov",
+            "pytest-cov",
+            "pytest-cov",
+            "pip install pytest-cov",
+            "覆盖率统计（可选：缺失时 pytest 照跑，仅无覆盖率结论）",
+            True,
+        ),
     ]
     # import-linter：入口是 lint-imports 控制台脚本，不在 python -m 里
     exe = shutil.which("lint-imports")
@@ -174,12 +254,18 @@ def run_doctor(cfg: Config, probe_fn: Callable[[], list[ToolCheck]] | None = Non
         ver = _clean_version(r.stdout or r.stderr)
     else:
         ok, ver = False, ""
-    checks.append(ToolCheck(
-        name="import-linter", tool="import-linter", available=ok, version=ver,
-        install="pip install import-linter",
-        note="架构依赖契约（可选：仅当目标仓库有配置时启用）", optional=True,
-        detail="" if ok else "lint-imports 不在 PATH",
-    ))
+    checks.append(
+        ToolCheck(
+            name="import-linter",
+            tool="import-linter",
+            available=ok,
+            version=ver,
+            install="pip install import-linter",
+            note="架构依赖契约（可选：仅当目标仓库有配置时启用）",
+            optional=True,
+            detail="" if ok else "lint-imports 不在 PATH",
+        )
+    )
     checks.append(_check_deepsec(cfg))
     return checks
 

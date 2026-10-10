@@ -63,9 +63,13 @@ def run_cmd(
             duration_s=time.monotonic() - start,
         )
     except subprocess.TimeoutExpired:
-        return ProcResult(cmd=cmd, returncode=None, timed_out=True, duration_s=time.monotonic() - start)
+        return ProcResult(
+            cmd=cmd, returncode=None, timed_out=True, duration_s=time.monotonic() - start
+        )
     except (FileNotFoundError, OSError):
-        return ProcResult(cmd=cmd, returncode=None, not_found=True, duration_s=time.monotonic() - start)
+        return ProcResult(
+            cmd=cmd, returncode=None, not_found=True, duration_s=time.monotonic() - start
+        )
 
 
 def probe(cmd: list[str], *, timeout: int = 30, cwd=None, extra_env=None) -> ProcResult:

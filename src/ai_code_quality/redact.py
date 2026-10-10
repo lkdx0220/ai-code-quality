@@ -20,7 +20,10 @@ _RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bsk-(?:ant-)?(?:proj-)?[A-Za-z0-9_-]{16,}\b"), REDACTED),
     (re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b"), REDACTED),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"), REDACTED),
-    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"), REDACTED),
+    (
+        re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+        REDACTED,
+    ),
     # 赋值形态：password = "..." / api_key: '...' / token: `...`（保留键名，抹值）
     (
         re.compile(
@@ -33,7 +36,9 @@ _RULES: list[tuple[re.Pattern[str], str]] = [
     ),
     # 连接串里的密码：postgres://user:pass@host
     (
-        re.compile(r"\b((?:postgres|postgresql|mysql|mongodb|redis|amqp)://[^:\s/@]+:)[^@\s/\"']+(@)"),
+        re.compile(
+            r"\b((?:postgres|postgresql|mysql|mongodb|redis|amqp)://[^:\s/@]+:)[^@\s/\"']+(@)"
+        ),
         r"\1" + REDACTED + r"\2",
     ),
 ]
@@ -50,7 +55,9 @@ def redact_obj(obj: Any) -> Any:
     if isinstance(obj, str):
         return redact_text(obj)
     if isinstance(obj, dict):
-        return {redact_text(str(k)) if isinstance(k, str) else k: redact_obj(v) for k, v in obj.items()}
+        return {
+            redact_text(str(k)) if isinstance(k, str) else k: redact_obj(v) for k, v in obj.items()
+        }
     if isinstance(obj, list):
         return [redact_obj(v) for v in obj]
     return obj

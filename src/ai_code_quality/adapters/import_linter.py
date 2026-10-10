@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import shutil
 
-from ..schema import AdapterResult, Finding
+from ..schema import AdapterResult
 from .base import Adapter, ScanContext, finding
 
 _CONTRACT = re.compile(r"^\*\s+(\S+)\s+(kept|broken|skipped|ignored)\s*$")
@@ -57,48 +57,92 @@ class ImportLinterAdapter(Adapter):
         from ..runner import run_cmd
 
         if ctx.importlinter_config is None:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason="未发现 import-linter 配置（.importlinter / pyproject [tool.importlinter] / setup.cfg）")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                reason="未发现 import-linter 配置（.importlinter / pyproject [tool.importlinter] / setup.cfg）",
+            )
 
         exe = shutil.which("lint-imports")
         if exe is None:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason="lint-imports 不在 PATH（import-linter 未安装）")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                reason="lint-imports 不在 PATH（import-linter 未安装）",
+            )
 
         ver = run_cmd([exe, "--version"], timeout=30)
-        version = (ver.stdout or ver.stderr).strip().splitlines()[-1] if (ver.stdout or ver.stderr).strip() else ""
+        version = (
+            (ver.stdout or ver.stderr).strip().splitlines()[-1]
+            if (ver.stdout or ver.stderr).strip()
+            else ""
+        )
 
         cmd = [exe, "--no-cache", "--no-logo", "--config", str(ctx.importlinter_config)]
         proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
-        raw_ref = self.write_raw(ctx, "import-linter.txt", proc.stdout + ("\n--stderr--\n" + proc.stderr if proc.stderr else ""))
+        raw_ref = self.write_raw(
+            ctx,
+            "import-linter.txt",
+            proc.stdout + ("\n--stderr--\n" + proc.stderr if proc.stderr else ""),
+        )
         if proc.timed_out:
-            return AdapterResult(name=self.name, tool=self.tool, status="timeout", version=version,
-                                 reason=f"lint-imports 超时（>{ctx.cfg.timeout_for(self.name)}s）", raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="timeout",
+                version=version,
+                reason=f"lint-imports 超时（>{ctx.cfg.timeout_for(self.name)}s）",
+                raw_files=[raw_ref],
+            )
         if proc.returncode == 0:
-            return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                                 duration_s=proc.duration_s, findings=[], raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="ok",
+                version=version,
+                duration_s=proc.duration_s,
+                findings=[],
+                raw_files=[raw_ref],
+            )
         # 退出码非 0：可能是违约（1）也可能是配置错误（2）；按输出区分
         combined = proc.stdout + proc.stderr
         if "Traceback" in combined or "Error" in combined.split("\n\n")[0]:
-            return AdapterResult(name=self.name, tool=self.tool, status="error", version=version,
-                                 reason=f"lint-imports 执行失败: {combined.strip()[:200]}", raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="error",
+                version=version,
+                reason=f"lint-imports 执行失败: {combined.strip()[:200]}",
+                raw_files=[raw_ref],
+            )
 
         kept, broken, blocks = parse_contracts(proc.stdout)
         findings = []
         for i, cid in enumerate(broken):
             evidence = "\n".join(blocks[i]) if i < len(blocks) else ""
-            findings.append(finding(
-                ctx,
-                source="import-linter",
-                category="architecture",
-                severity="medium",
-                file="",
-                line=0,
-                message=f"架构契约违约: {cid}",
-                rule="import-contract",
-                evidence=evidence[:500],
-                fix_hint="按契约调整 import 方向或更新契约",
-                raw_ref=raw_ref,
-            ))
-        return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                             duration_s=proc.duration_s, findings=findings, raw_files=[raw_ref])
+            findings.append(
+                finding(
+                    ctx,
+                    source="import-linter",
+                    category="architecture",
+                    severity="medium",
+                    file="",
+                    line=0,
+                    message=f"架构契约违约: {cid}",
+                    rule="import-contract",
+                    evidence=evidence[:500],
+                    fix_hint="按契约调整 import 方向或更新契约",
+                    raw_ref=raw_ref,
+                )
+            )
+        return AdapterResult(
+            name=self.name,
+            tool=self.tool,
+            status="ok",
+            version=version,
+            duration_s=proc.duration_s,
+            findings=findings,
+            raw_files=[raw_ref],
+        )

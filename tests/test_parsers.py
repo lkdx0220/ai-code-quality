@@ -9,8 +9,14 @@ from ai_code_quality.adapters.vulture_adapter import parse_vulture_output
 
 def test_deepsec_secret_evidence_hidden():
     # deepsec 的密钥 evidence 是截断碎片（sk-p...cdef），必须整体隐藏而不是靠正则
-    assert _safe_evidence("hardcoded_secret_openai_key", "hardcoded_secret", "sk-p...cdef") == SECRET_EVIDENCE_PLACEHOLDER
-    assert _safe_evidence("ai_pattern_hardcoded_jwt_secret", "ai_pattern", "JWT_SECRET = eyJ...") == SECRET_EVIDENCE_PLACEHOLDER
+    assert (
+        _safe_evidence("hardcoded_secret_openai_key", "hardcoded_secret", "sk-p...cdef")
+        == SECRET_EVIDENCE_PLACEHOLDER
+    )
+    assert (
+        _safe_evidence("ai_pattern_hardcoded_jwt_secret", "ai_pattern", "JWT_SECRET = eyJ...")
+        == SECRET_EVIDENCE_PLACEHOLDER
+    )
     # 非密钥类证据保留（eval 等危险写法需要证据定位）
     assert _safe_evidence("insecure_config_eval", "insecure_config", "eval(") == "eval("
 
@@ -68,7 +74,9 @@ def test_parse_pytest_failures():
 
 
 def test_parse_coverage_json():
-    cov = parse_coverage_json('{"totals": {"percent_covered": 45.5, "covered_lines": 10, "num_statements": 22}}')
+    cov = parse_coverage_json(
+        '{"totals": {"percent_covered": 45.5, "covered_lines": 10, "num_statements": 22}}'
+    )
     assert cov and cov["percent"] == 45.5
     assert parse_coverage_json("{}") is None
     assert parse_coverage_json("nope") is None

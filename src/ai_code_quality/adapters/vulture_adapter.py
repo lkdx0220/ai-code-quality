@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..schema import AdapterResult, Finding
+from ..schema import AdapterResult
 from .base import Adapter, ScanContext, finding
 
 _VULTURE_LINE = re.compile(r"^(.+?):(\d+): (.+?) \((\d+)% confidence\)$")
@@ -31,29 +31,57 @@ class VultureAdapter(Adapter):
 
         ver = probe([ctx.cfg.python, "-m", "vulture", "--version"])
         if ver.not_found or ver.returncode != 0:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped",
-                                 reason="vulture 不可用（未安装）")
+            return AdapterResult(
+                name=self.name, tool=self.tool, status="skipped", reason="vulture 不可用（未安装）"
+            )
         version = ver.stdout.strip().splitlines()[-1] if ver.stdout.strip() else ""
 
         if not ctx.targets:
-            return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                                 reason="没有可分析的 .py 目标")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="ok",
+                version=version,
+                reason="没有可分析的 .py 目标",
+            )
 
-        cmd = [ctx.cfg.python, "-m", "vulture", *[str(t) for t in ctx.targets],
-               "--min-confidence", str(ctx.cfg.vulture_min_confidence)]
+        cmd = [
+            ctx.cfg.python,
+            "-m",
+            "vulture",
+            *[str(t) for t in ctx.targets],
+            "--min-confidence",
+            str(ctx.cfg.vulture_min_confidence),
+        ]
         proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
         raw_ref = self.write_raw(ctx, "vulture.txt", proc.stdout)
         if proc.timed_out:
-            return AdapterResult(name=self.name, tool=self.tool, status="timeout", version=version,
-                                 reason=f"vulture 超时（>{ctx.cfg.timeout_for(self.name)}s）", raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="timeout",
+                version=version,
+                reason=f"vulture 超时（>{ctx.cfg.timeout_for(self.name)}s）",
+                raw_files=[raw_ref],
+            )
         if proc.not_found:
-            return AdapterResult(name=self.name, tool=self.tool, status="skipped", version=version,
-                                 reason="无法启动 vulture 进程")
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="skipped",
+                version=version,
+                reason="无法启动 vulture 进程",
+            )
         # vulture 实测退出码：0=干净，3=发现死代码（2.16）；其余按错误处理
         if proc.returncode not in (0, 3):
-            return AdapterResult(name=self.name, tool=self.tool, status="error", version=version,
-                                 reason=f"vulture 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}",
-                                 raw_files=[raw_ref])
+            return AdapterResult(
+                name=self.name,
+                tool=self.tool,
+                status="error",
+                version=version,
+                reason=f"vulture 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}",
+                raw_files=[raw_ref],
+            )
 
         findings = [
             finding(
@@ -71,5 +99,12 @@ class VultureAdapter(Adapter):
             )
             for file, line, msg, conf in parse_vulture_output(proc.stdout)
         ]
-        return AdapterResult(name=self.name, tool=self.tool, status="ok", version=version,
-                             duration_s=proc.duration_s, findings=findings, raw_files=[raw_ref])
+        return AdapterResult(
+            name=self.name,
+            tool=self.tool,
+            status="ok",
+            version=version,
+            duration_s=proc.duration_s,
+            findings=findings,
+            raw_files=[raw_ref],
+        )

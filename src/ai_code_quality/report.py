@@ -18,13 +18,19 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
     lines.append("")
     lines.append(f"- 项目：`{summary['project_root']}`")
     lines.append(f"- 时间：{summary.get('created_at', '')}")
-    lines.append(f"- 范围：{summary.get('scope')}（目标 {len(summary.get('scanned_targets', []))} 项）")
+    lines.append(
+        f"- 范围：{summary.get('scope')}（目标 {len(summary.get('scanned_targets', []))} 项）"
+    )
     if git.get("is_repo"):
-        lines.append(f"- Git：`{git.get('branch')}@{git.get('commit')}`，未提交文件 {git.get('dirty_files')} 个")
+        lines.append(
+            f"- Git：`{git.get('branch')}@{git.get('commit')}`，未提交文件 {git.get('dirty_files')} 个"
+        )
     else:
         lines.append("- Git：非 git 仓库")
     totals = summary.get("totals") or {}
-    lines.append(f"- 总 findings：**{totals.get('findings', 0)}**（其中可自动修复 {totals.get('auto_fixable', 0)}）")
+    lines.append(
+        f"- 总 findings：**{totals.get('findings', 0)}**（其中可自动修复 {totals.get('auto_fixable', 0)}）"
+    )
     lines.append("")
 
     # 工具状态表
@@ -101,7 +107,9 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
             lines.append(f"- {n}")
         lines.append("")
     lines.append("---")
-    lines.append(f"产物目录：`{summary['project_root']}/audits/{summary['run_id']}/`（summary.json / findings.json / raw/）")
+    lines.append(
+        f"产物目录：`{summary['project_root']}/audits/{summary['run_id']}/`（summary.json / findings.json / raw/）"
+    )
     return redact_text("\n".join(lines))
 
 
@@ -109,20 +117,28 @@ def _next_steps(findings: list[Finding]) -> list[str]:
     steps: list[str] = []
     blockers = [f for f in findings if f.severity == "blocker"]
     highs = [f for f in findings if f.severity == "high"]
-    security = [f for f in findings if f.category == "security" and f.severity in ("blocker", "high")]
+    security = [
+        f for f in findings if f.category == "security" and f.severity in ("blocker", "high")
+    ]
     auto = [f for f in findings if f.auto_fixable]
-    complex_fn = [f for f in findings if f.rule.startswith("cc-") and f.severity in ("high", "blocker")]
+    complex_fn = [
+        f for f in findings if f.rule.startswith("cc-") and f.severity in ("high", "blocker")
+    ]
 
     if blockers:
         steps.append(f"先处理 {len(blockers)} 个 blocker（含复杂度 rank F / critical 安全问题）")
     if security:
-        steps.append(f"处理 {len(security)} 个高危安全问题（deepsec finding，先核对再修，密钥类必须轮换）")
+        steps.append(
+            f"处理 {len(security)} 个高危安全问题（deepsec finding，先核对再修，密钥类必须轮换）"
+        )
     if complex_fn:
         steps.append(f"拆分 {len(complex_fn)} 个高复杂度函数（radon rank E/F）")
     if highs:
         steps.append(f"排查 {len(highs)} 个 high（类型错误 / 失败测试 / 未定义名）")
     if auto:
-        steps.append(f"{len(auto)} 条可自动修复（ruff --fix / ruff format），建议作为第一批，改完跑测试")
+        steps.append(
+            f"{len(auto)} 条可自动修复（ruff --fix / ruff format），建议作为第一批，改完跑测试"
+        )
     if not steps:
         steps.append("没有 blocker/high：可转向覆盖率和架构治理（Phase 2 基线对比）")
     return steps[:5]
@@ -136,11 +152,17 @@ def build_console_output(summary: dict, findings: list[Finding]) -> str:
         status = t.get("status", "?")
         icon = _STATUS_ICON.get(status, "❓")
         extra = f"（{t.get('reason')}）" if t.get("reason") else ""
-        lines.append(f"  {icon} {t.get('name'):<14} {status:<8} {t.get('finding_count', 0):>3} findings  {extra}")
+        lines.append(
+            f"  {icon} {t.get('name'):<14} {status:<8} {t.get('finding_count', 0):>3} findings  {extra}"
+        )
     totals = summary.get("totals") or {}
     by_sev = totals.get("by_severity") or {}
     lines.append("")
-    sev_str = "  ".join(f"{s}:{by_sev.get(s, 0)}" for s in ("blocker", "high", "medium", "low", "info") if by_sev.get(s))
+    sev_str = "  ".join(
+        f"{s}:{by_sev.get(s, 0)}"
+        for s in ("blocker", "high", "medium", "low", "info")
+        if by_sev.get(s)
+    )
     lines.append(f"  共 {totals.get('findings', 0)} findings  [{sev_str}]")
     lines.append("")
     lines.append(f"  报告：{summary['project_root']}/audits/{summary['run_id']}/report.md")

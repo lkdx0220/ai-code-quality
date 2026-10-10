@@ -34,6 +34,7 @@ def get_adapters(enabled: list[str] | None = None) -> list[Adapter]:
         raise ValueError(f"未知 adapter: {unknown}（可用: {', '.join(ADAPTER_NAMES)}）")
     return [a for a in ALL_ADAPTERS if a.name in enabled]
 
+
 __all__ = [
     "Adapter",
     "ScanContext",
