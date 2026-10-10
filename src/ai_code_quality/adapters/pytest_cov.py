@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from ..schema import AdapterResult, Finding
 from .base import Adapter, ScanContext, finding
@@ -74,35 +75,12 @@ class PytestCovAdapter(Adapter):
         findings: list[Finding] = []
 
         cov_json = ctx.raw_dir / "coverage.json"
-        cmd = [
-            ctx.cfg.python,
-            "-m",
-            "pytest",
-            "-q",
-            "--tb=short",
-            "-p",
-            "no:cacheprovider",
-            *[str(p) for p in ctx.test_paths],
-        ]
-        if has_cov and ctx.source_dirs:
-            # --cov 一次只吃一个值，多目录必须重复传 --cov，否则多余值会变成 pytest 位置参数
-            for d in ctx.source_dirs:
-                cmd += ["--cov", str(d)]
-            cmd += [f"--cov-report=json:{cov_json}"]
-        env = {"COVERAGE_FILE": str(ctx.raw_dir / ".coverage")}
-        # 被测包可能没装进工具解释器（如 src 布局未 pip install -e），
-        # 把项目根（和 src/）加进 PYTHONPATH，否则 pytest 收集时直接 ImportError
-        import os
-
-        path_parts: list[str] = [str(ctx.project_root)]
-        src_dir = ctx.project_root / "src"
-        if src_dir.is_dir():
-            path_parts.append(str(src_dir))
-        if os.environ.get("PYTHONPATH"):
-            path_parts.append(os.environ["PYTHONPATH"])
-        env["PYTHONPATH"] = os.pathsep.join(path_parts)
+        cmd = self._build_cmd(ctx, has_cov, cov_json)
         proc = run_cmd(
-            cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root, extra_env=env
+            cmd,
+            timeout=ctx.cfg.timeout_for(self.name),
+            cwd=ctx.project_root,
+            extra_env=self._child_env(ctx),
         )
         raw_files.append(
             self.write_raw(
@@ -130,22 +108,7 @@ class PytestCovAdapter(Adapter):
             )
 
         # 无论退出码如何，先把能解析的失败/错误测试都收进来（部分结果也是证据）
-        for kind, test_id, detail in parse_pytest_failures(proc.stdout):
-            file = test_id.split("::")[0]
-            findings.append(
-                finding(
-                    ctx,
-                    source="pytest",
-                    category="test",
-                    severity="high",
-                    file=file,
-                    line=0,
-                    message=f"{'测试失败' if kind == 'FAILED' else '测试错误'}: {test_id}"
-                    + (f"（{detail[:100]}）" if detail else ""),
-                    rule=f"test-{kind.lower()}",
-                    raw_ref=raw_files[0],
-                )
-            )
+        findings.extend(self._failure_findings(ctx, proc.stdout, raw_files[0]))
 
         if proc.returncode not in (0, 1, 5):
             # 2=interrupted 3=internal 4=usage（环境缺依赖等），携带已解析的部分结果
@@ -175,29 +138,7 @@ class PytestCovAdapter(Adapter):
                 )
             )
 
-        if has_cov and cov_json.is_file():
-            cov_text = cov_json.read_text(encoding="utf-8", errors="replace")
-            raw_files.append(self.write_raw(ctx, "coverage.json", cov_text))
-            cov = parse_coverage_json(cov_text)
-            if cov and cov["percent"] < ctx.cfg.coverage_threshold:
-                findings.append(
-                    finding(
-                        ctx,
-                        source="pytest",
-                        category="test",
-                        severity="medium" if cov["percent"] >= 50 else "high",
-                        file="",
-                        line=0,
-                        message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
-                        f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
-                        rule="coverage",
-                        fix_hint="优先给核心分支补测试",
-                        raw_ref=raw_files[-1],
-                    )
-                )
-        elif not has_cov:
-            ctx.notes.append("pytest-cov 未安装，覆盖率检查跳过（其余测试检查正常）")
-
+        self._coverage_section(ctx, has_cov, cov_json, findings, raw_files)
         return AdapterResult(
             name=self.name,
             tool=self.tool,
@@ -207,3 +148,88 @@ class PytestCovAdapter(Adapter):
             findings=findings,
             raw_files=raw_files,
         )
+
+    def _build_cmd(self, ctx: ScanContext, has_cov: bool, cov_json: Path) -> list[str]:
+        cmd = [
+            ctx.cfg.python,
+            "-m",
+            "pytest",
+            "-q",
+            "--tb=short",
+            "-p",
+            "no:cacheprovider",
+            *[str(p) for p in ctx.test_paths],
+        ]
+        if has_cov and ctx.source_dirs:
+            # --cov 一次只吃一个值，多目录必须重复传 --cov，否则多余值会变成 pytest 位置参数
+            for d in ctx.source_dirs:
+                cmd += ["--cov", str(d)]
+            cmd += [f"--cov-report=json:{cov_json}"]
+        return cmd
+
+    def _child_env(self, ctx: ScanContext) -> dict[str, str]:
+        """缓存重定向 + PYTHONPATH：被测包可能没装进工具解释器
+        （如 src 布局未 pip install -e），把项目根（和 src/）加进去，否则收集直接 ImportError。"""
+        import os
+
+        path_parts: list[str] = [str(ctx.project_root)]
+        src_dir = ctx.project_root / "src"
+        if src_dir.is_dir():
+            path_parts.append(str(src_dir))
+        if os.environ.get("PYTHONPATH"):
+            path_parts.append(os.environ["PYTHONPATH"])
+        return {
+            "COVERAGE_FILE": str(ctx.raw_dir / ".coverage"),
+            "PYTHONPATH": os.pathsep.join(path_parts),
+        }
+
+    def _failure_findings(self, ctx: ScanContext, stdout: str, raw_ref: str) -> list[Finding]:
+        return [
+            finding(
+                ctx,
+                source="pytest",
+                category="test",
+                severity="high",
+                file=test_id.split("::")[0],
+                line=0,
+                message=f"{'测试失败' if kind == 'FAILED' else '测试错误'}: {test_id}"
+                + (f"（{detail[:100]}）" if detail else ""),
+                rule=f"test-{kind.lower()}",
+                raw_ref=raw_ref,
+            )
+            for kind, test_id, detail in parse_pytest_failures(stdout)
+        ]
+
+    def _coverage_section(
+        self,
+        ctx: ScanContext,
+        has_cov: bool,
+        cov_json: Path,
+        findings: list[Finding],
+        raw_files: list[str],
+    ) -> None:
+        """覆盖率结论（低覆盖率 finding）或"未安装 pytest-cov"备注。"""
+        if not has_cov:
+            ctx.notes.append("pytest-cov 未安装，覆盖率检查跳过（其余测试检查正常）")
+            return
+        if not cov_json.is_file():
+            return
+        cov_text = cov_json.read_text(encoding="utf-8", errors="replace")
+        raw_files.append(self.write_raw(ctx, "coverage.json", cov_text))
+        cov = parse_coverage_json(cov_text)
+        if cov and cov["percent"] < ctx.cfg.coverage_threshold:
+            findings.append(
+                finding(
+                    ctx,
+                    source="pytest",
+                    category="test",
+                    severity="medium" if cov["percent"] >= 50 else "high",
+                    file="",
+                    line=0,
+                    message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
+                    f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
+                    rule="coverage",
+                    fix_hint="优先给核心分支补测试",
+                    raw_ref=raw_files[-1],
+                )
+            )

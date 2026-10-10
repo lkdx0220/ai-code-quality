@@ -6,9 +6,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import __version__
 from .adapters import ADAPTER_NAMES
+
+if TYPE_CHECKING:
+    from .scan import ScanOutput
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -96,35 +100,40 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 1
-
     if args.command == "doctor":
-        from .config import Config
-        from .doctor import doctor_summary, render_console, run_doctor
-
-        doc_overrides: dict[str, object] = {}
-        if getattr(args, "python", None):
-            doc_overrides["python"] = args.python
-        if getattr(args, "deepsec_home", None):
-            doc_overrides["deepsec_home"] = args.deepsec_home
-        if getattr(args, "deepsec_python", None):
-            doc_overrides["deepsec_python"] = args.deepsec_python
-        cfg = Config.load(Path("."), cli_overrides=doc_overrides)
-        summary = doctor_summary(run_doctor(cfg))
-        summary["cq_version"] = __version__
-        if args.format == "json":
-            print(json.dumps(summary, ensure_ascii=False, indent=2))
-        else:
-            print(render_console(cfg.python, summary))
-        # 0=全部就绪；2=有缺失（不阻塞 scan，但相应维度无结论）
-        return 0 if summary["all_available"] else 2
-
+        return _run_doctor_command(args)
     if args.command != "scan":
         print(
             f"错误：`cq {args.command}` 属于 Phase 2+，本次未实现。当前可用：cq scan / cq doctor",
             file=sys.stderr,
         )
         return 1
+    return _run_scan_command(args)
 
+
+def _run_doctor_command(args: argparse.Namespace) -> int:
+    from .config import Config
+    from .doctor import doctor_summary, render_console, run_doctor
+
+    overrides: dict[str, object] = {}
+    if getattr(args, "python", None):
+        overrides["python"] = args.python
+    if getattr(args, "deepsec_home", None):
+        overrides["deepsec_home"] = args.deepsec_home
+    if getattr(args, "deepsec_python", None):
+        overrides["deepsec_python"] = args.deepsec_python
+    cfg = Config.load(Path("."), cli_overrides=overrides)
+    summary = doctor_summary(run_doctor(cfg))
+    summary["cq_version"] = __version__
+    if args.format == "json":
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        print(render_console(cfg.python, summary))
+    # 0=全部就绪；2=有缺失（不阻塞 scan，但相应维度无结论）
+    return 0 if summary["all_available"] else 2
+
+
+def _run_scan_command(args: argparse.Namespace) -> int:
     from .config import Config
     from .scan import run_scan
 
@@ -157,22 +166,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.format == "json":
         print(json.dumps(out.summary, ensure_ascii=False, indent=2))
     else:
-        from .report import build_console_output
-
-        print(build_console_output(out.summary, out.findings))
-        if out.exit_code == 2:
-            print(
-                "\n注意：有工具执行出错/超时（status=error/timeout），上述结果不完整。",
-                file=sys.stderr,
-            )
-        runnable = [r for r in out.results if r.status == "ok"]
-        if out.results and not runnable:
-            print(
-                "\n警告：所有工具都 skipped，本次扫描没有产生任何有效结论。"
-                "请检查工具安装或 --python 指向的解释器。",
-                file=sys.stderr,
-            )
+        _print_scan_console(out)
     return out.exit_code
+
+
+def _print_scan_console(out: ScanOutput) -> None:
+    from .report import build_console_output
+
+    print(build_console_output(out.summary, out.findings))
+    if out.exit_code == 2:
+        print(
+            "\n注意：有工具执行出错/超时（status=error/timeout），上述结果不完整。", file=sys.stderr
+        )
+    runnable = [r for r in out.results if r.status == "ok"]
+    if out.results and not runnable:
+        print(
+            "\n警告：所有工具都 skipped，本次扫描没有产生任何有效结论。"
+            "请检查工具安装或 --python 指向的解释器。",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

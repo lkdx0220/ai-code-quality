@@ -37,13 +37,28 @@ def _parse_mi_json(text: str) -> dict[str, dict[str, object]]:
     return out
 
 
+def _flatten_blocks(blocks: list[dict[str, object]]) -> list[tuple[dict[str, object], str]]:
+    """展开 radon cc 块列表：class 块的方法嵌套在 methods 里，一并入队。"""
+    out: list[tuple[dict[str, object], str]] = []
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        out.append((b, str(b.get("type", "function"))))
+        methods = b.get("methods") or []
+        if isinstance(methods, list):
+            for m in methods:
+                if isinstance(m, dict):
+                    out.append((m, str(m.get("type", "method"))))
+    return out
+
+
 class RadonAdapter(Adapter):
     name = "radon"
     tool = "radon"
     description = "radon cc/mi（圈复杂度 / 可维护性指数）"
 
     def run(self, ctx: ScanContext) -> AdapterResult:
-        from ..runner import probe, run_cmd
+        from ..runner import probe
 
         ver = probe([ctx.cfg.python, "-m", "radon", "--version"])
         if ver.not_found or ver.returncode != 0:
@@ -65,7 +80,37 @@ class RadonAdapter(Adapter):
         raw_files: list[str] = []
         total_s = 0.0
 
-        cc_cmd = [
+        cc_out = self._scan_cc(ctx, version)
+        if isinstance(cc_out, AdapterResult):
+            return cc_out
+        cc_findings, cc_duration = cc_out
+        findings.extend(cc_findings)
+        total_s += cc_duration
+
+        mi_out = self._scan_mi(ctx, version, raw_files)
+        if isinstance(mi_out, AdapterResult):
+            return mi_out
+        mi_findings, mi_duration = mi_out
+        findings.extend(mi_findings)
+        total_s += mi_duration
+
+        return AdapterResult(
+            name=self.name,
+            tool=self.tool,
+            status="ok",
+            version=version,
+            duration_s=total_s,
+            findings=findings,
+            raw_files=raw_files,
+        )
+
+    def _scan_cc(
+        self, ctx: ScanContext, version: str
+    ) -> tuple[list[Finding], float] | AdapterResult:
+        """跑 radon cc；失败返回 AdapterResult（timeout/error）。"""
+        from ..runner import run_cmd
+
+        cmd = [
             ctx.cfg.python,
             "-m",
             "radon",
@@ -75,9 +120,8 @@ class RadonAdapter(Adapter):
             "--total-average",
             *[str(t) for t in ctx.targets],
         ]
-        proc = run_cmd(cc_cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
+        proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
         cc_raw = self.write_raw(ctx, "radon-cc.json", proc.stdout)
-        raw_files.append(cc_raw)
         if proc.timed_out:
             return AdapterResult(
                 name=self.name,
@@ -85,7 +129,7 @@ class RadonAdapter(Adapter):
                 status="timeout",
                 version=version,
                 reason=f"radon cc 超时（>{ctx.cfg.timeout_for(self.name)}s）",
-                raw_files=raw_files,
+                raw_files=[cc_raw],
             )
         if proc.returncode != 0:
             return AdapterResult(
@@ -94,43 +138,31 @@ class RadonAdapter(Adapter):
                 status="error",
                 version=version,
                 reason=f"radon cc 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}",
-                raw_files=raw_files,
+                raw_files=[cc_raw],
             )
-        total_s += proc.duration_s
+        return self._cc_findings(ctx, proc.stdout, cc_raw), proc.duration_s
 
+    def _cc_findings(self, ctx: ScanContext, stdout: str, cc_raw: str) -> list[Finding]:
         worst_allowed = _RANK_ORDER.get(ctx.cfg.max_cc_rank.upper(), 3)
-        for file, blocks in _parse_cc_json(proc.stdout).items():
+        findings: list[Finding] = []
+        for file, blocks in _parse_cc_json(stdout).items():
             # radon 对解析不了的文件输出字符串 "error" 而不是块列表
             if not isinstance(blocks, list):
-                continue
-            block_queue: list[tuple[dict[str, object], str]] = []
-            for b in blocks:
-                if isinstance(b, str):
-                    findings.append(
-                        finding(
-                            ctx,
-                            source="radon",
-                            category="reliability",
-                            severity="medium",
-                            file=file,
-                            line=0,
-                            message=f"radon 无法解析该文件（{b}）",
-                            rule="cc-parse-error",
-                            raw_ref=cc_raw,
-                        )
+                findings.append(
+                    finding(
+                        ctx,
+                        source="radon",
+                        category="reliability",
+                        severity="medium",
+                        file=file,
+                        line=0,
+                        message=f"radon 无法解析该文件（{blocks}）",
+                        rule="cc-parse-error",
+                        raw_ref=cc_raw,
                     )
-                    continue
-                if not isinstance(b, dict):
-                    continue
-                kind = str(b.get("type", "function"))
-                block_queue.append((b, kind))
-                # class 块的方法嵌套在 "methods" 里，也是拆分对象
-                methods = b.get("methods") or []
-                if isinstance(methods, list):
-                    for m in methods:
-                        if isinstance(m, dict):
-                            block_queue.append((m, str(m.get("type", "method"))))
-            for b, kind in block_queue:
+                )
+                continue
+            for b, kind in _flatten_blocks(blocks):
                 rank = str(b.get("rank", "A"))
                 if _RANK_ORDER.get(rank, 0) < worst_allowed:
                     continue
@@ -149,33 +181,19 @@ class RadonAdapter(Adapter):
                         raw_ref=cc_raw,
                     )
                 )
+        return findings
 
-        mi_cmd = [ctx.cfg.python, "-m", "radon", "mi", "-s", "-j", *[str(t) for t in ctx.targets]]
-        proc = run_cmd(mi_cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
+    def _scan_mi(
+        self, ctx: ScanContext, version: str, raw_files: list[str]
+    ) -> tuple[list[Finding], float] | AdapterResult:
+        """跑 radon mi；失败返回 AdapterResult（timeout）。"""
+        from ..runner import run_cmd
+
+        cmd = [ctx.cfg.python, "-m", "radon", "mi", "-s", "-j", *[str(t) for t in ctx.targets]]
+        proc = run_cmd(cmd, timeout=ctx.cfg.timeout_for(self.name), cwd=ctx.project_root)
         mi_raw = self.write_raw(ctx, "radon-mi.json", proc.stdout)
         raw_files.append(mi_raw)
-        if not proc.timed_out and proc.returncode == 0:
-            total_s += proc.duration_s
-            mi_worst = _RANK_ORDER.get(ctx.cfg.min_mi_rank.upper(), 2)
-            for file, info in _parse_mi_json(proc.stdout).items():
-                rank = str(info.get("rank", "A"))
-                # mi 的 rank 越大越差，与 cc 同向可比
-                if _RANK_ORDER.get(rank, 0) < mi_worst:
-                    continue
-                findings.append(
-                    finding(
-                        ctx,
-                        source="radon",
-                        category="maintainability",
-                        severity=MI_SEVERITY.get(rank, "low"),
-                        file=file,
-                        line=0,
-                        message=f"可维护性指数 {info.get('mi', '?')}（rank {rank}）",
-                        rule=f"mi-{rank}",
-                        raw_ref=mi_raw,
-                    )
-                )
-        elif proc.timed_out:
+        if proc.timed_out:
             return AdapterResult(
                 name=self.name,
                 tool=self.tool,
@@ -184,13 +202,27 @@ class RadonAdapter(Adapter):
                 reason="radon mi 超时",
                 raw_files=raw_files,
             )
+        if proc.returncode != 0:
+            return [], proc.duration_s  # mi 失败不拖垮整体（cc 结果仍然有效）
 
-        return AdapterResult(
-            name=self.name,
-            tool=self.tool,
-            status="ok",
-            version=version,
-            duration_s=total_s,
-            findings=findings,
-            raw_files=raw_files,
-        )
+        mi_worst = _RANK_ORDER.get(ctx.cfg.min_mi_rank.upper(), 2)
+        findings: list[Finding] = []
+        for file, info in _parse_mi_json(proc.stdout).items():
+            rank = str(info.get("rank", "A"))
+            # mi 的 rank 越大越差，与 cc 同向可比
+            if _RANK_ORDER.get(rank, 0) < mi_worst:
+                continue
+            findings.append(
+                finding(
+                    ctx,
+                    source="radon",
+                    category="maintainability",
+                    severity=MI_SEVERITY.get(rank, "low"),
+                    file=file,
+                    line=0,
+                    message=f"可维护性指数 {info.get('mi', '?')}（rank {rank}）",
+                    rule=f"mi-{rank}",
+                    raw_ref=mi_raw,
+                )
+            )
+        return findings, proc.duration_s

@@ -12,7 +12,21 @@ _SEV_LIMIT = {"blocker": 50, "high": 50, "medium": 20, "low": 10, "info": 0}
 
 
 def build_report_md(summary: dict, findings: list[Finding]) -> str:
+    totals = summary.get("totals") or {}
     lines: list[str] = []
+    _header_section(lines, summary, totals)
+    _tools_table(lines, summary)
+    _severity_table(lines, totals)
+    _finding_details(lines, findings, totals)
+    _next_steps_section(lines, summary, findings)
+    lines.append("---")
+    lines.append(
+        f"产物目录：`{summary['project_root']}/audits/{summary['run_id']}/`（summary.json / findings.json / raw/）"
+    )
+    return redact_text("\n".join(lines))
+
+
+def _header_section(lines: list[str], summary: dict, totals: dict) -> None:
     git = summary.get("git") or {}
     lines.append(f"# 代码质量扫描报告 · {summary['run_id']}")
     lines.append("")
@@ -27,13 +41,13 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
         )
     else:
         lines.append("- Git：非 git 仓库")
-    totals = summary.get("totals") or {}
     lines.append(
         f"- 总 findings：**{totals.get('findings', 0)}**（其中可自动修复 {totals.get('auto_fixable', 0)}）"
     )
     lines.append("")
 
-    # 工具状态表
+
+def _tools_table(lines: list[str], summary: dict) -> None:
     lines.append("## 工具状态")
     lines.append("")
     lines.append("| 工具 | 状态 | 版本 | 耗时 | findings | 说明 |")
@@ -42,15 +56,14 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
         status = t.get("status", "?")
         icon = _STATUS_ICON.get(status, "❓")
         reason = str(t.get("reason") or "").replace("|", "\\|").replace("\n", " ")
-        if status == "ok" and not reason:
-            reason = ""
         lines.append(
             f"| {t.get('tool')} ({t.get('name')}) | {icon} {status} | {t.get('version', '')} "
             f"| {t.get('duration_s', 0)}s | {t.get('finding_count', 0)} | {reason} |"
         )
     lines.append("")
 
-    # 分级统计
+
+def _severity_table(lines: list[str], totals: dict) -> None:
     by_sev = totals.get("by_severity") or {}
     lines.append("## 分级统计")
     lines.append("")
@@ -65,34 +78,38 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
         lines.append("分类：" + "、".join(f"{k} {v}" for k, v in sorted(by_cat.items())))
     lines.append("")
 
-    # findings 明细（分级限额）
+
+def _finding_details(lines: list[str], findings: list[Finding], totals: dict) -> None:
+    """findings 明细（分级限额）；info 只计数。"""
     for sev in ("blocker", "high", "medium", "low"):
         limit = _SEV_LIMIT[sev]
-        if limit == 0:
-            continue
         group = [f for f in findings if f.severity == sev]
-        if not group:
+        if limit == 0 or not group:
             continue
         lines.append(f"## {sev.upper()}（{len(group)}）")
         lines.append("")
         for f in group[:limit]:
-            loc = f"`{f.file}:{f.line}`" if f.file else "（全局）"
-            rule = f" `{f.rule}`" if f.rule else ""
-            lines.append(f"- {_SEV_ICON[sev]} **[{f.source}]{rule}** {loc} — {f.message}")
-            if f.evidence:
-                lines.append(f"  - 证据：`{f.evidence[:160]}`")
-            if f.fix_hint:
-                lines.append(f"  - 建议：{f.fix_hint}")
+            _finding_line(lines, sev, f)
         if len(group) > limit:
             lines.append(f"- …另有 {len(group) - limit} 条，见 findings.json")
         lines.append("")
-
-    info_count = by_sev.get("info") or 0
+    info_count = totals.get("by_severity", {}).get("info") or 0
     if info_count:
         lines.append(f"另有 info 级 {info_count} 条，见 findings.json。")
         lines.append("")
 
-    # 下一步（简单启发式，Phase 2 triage 会正式化）
+
+def _finding_line(lines: list[str], sev: str, f: Finding) -> None:
+    loc = f"`{f.file}:{f.line}`" if f.file else "（全局）"
+    rule = f" `{f.rule}`" if f.rule else ""
+    lines.append(f"- {_SEV_ICON[sev]} **[{f.source}]{rule}** {loc} — {f.message}")
+    if f.evidence:
+        lines.append(f"  - 证据：`{f.evidence[:160]}`")
+    if f.fix_hint:
+        lines.append(f"  - 建议：{f.fix_hint}")
+
+
+def _next_steps_section(lines: list[str], summary: dict, findings: list[Finding]) -> None:
     lines.append("## 建议的下一步（启发式）")
     lines.append("")
     for step in _next_steps(findings):
@@ -105,11 +122,6 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
         for n in notes:
             lines.append(f"- {n}")
         lines.append("")
-    lines.append("---")
-    lines.append(
-        f"产物目录：`{summary['project_root']}/audits/{summary['run_id']}/`（summary.json / findings.json / raw/）"
-    )
-    return redact_text("\n".join(lines))
 
 
 def _next_steps(findings: list[Finding]) -> list[str]:
