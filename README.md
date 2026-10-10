@@ -1,12 +1,38 @@
 # ai-code-quality（`cq`）· AI Agent Skill
 
+[![CI](https://github.com/lkdx0220/ai-code-quality-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/lkdx0220/ai-code-quality-skill/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **这是一个 AI Agent Skill**：一份可安装到 DSH / Claude Code / Codex / Cursor 等任何 AI Agent 的
 说明文件（[`agent-adapters/`](agent-adapters/)），外加一个由它驱动的本地 CLI `cq`——
 把 AI 写的代码按可复现的流程，从"能跑但 AI 味重"带到质量门 A 级。
 
-- **当 Skill 用**：把 [`agent-adapters/dsh/SKILL.md`](agent-adapters/dsh/SKILL.md) 装进你的 Agent
-  （各 harness 安装点见 [`agent-adapters/README.md`](agent-adapters/README.md)），
-  然后直接说"帮我审一下这个项目的代码质量"
+## 30 秒上手
+
+```bash
+# 一行安装（任选其一）
+pipx install git+https://github.com/lkdx0220/ai-code-quality-skill
+uv tool install git+https://github.com/lkdx0220/ai-code-quality-skill
+pip install -e .   # 开发态
+
+cq doctor                     # ① 环境体检：缺什么工具，按提示装（系统已有会自动发现）
+cq scan --project <你的仓库>   # ② 扫描 → audits/<run_id>/report.md
+cq gate --run <run_id> --target A   # ③ 质量门：blocker/high/复杂度/覆盖率/新增，exit 0=达标
+```
+
+## 怎么接进你的 AI Agent（适配器矩阵）
+
+| Agent | 接法 | 文件 |
+|---|---|---|
+| DSH | 复制到各 home 的 `skills/ai-code-quality/` | [`agent-adapters/dsh/SKILL.md`](agent-adapters/dsh/SKILL.md) |
+| Claude Code | 复制到 `~/.claude/skills/ai-code-quality/` | 同上（SKILL.md 通吃） |
+| Codex | 片段追加到项目/用户级 `AGENTS.md` | [`agent-adapters/codex/AGENTS.md.snippet`](agent-adapters/codex/AGENTS.md.snippet) |
+| Cursor | 放进 `.cursor/rules/` | [`agent-adapters/cursor/ai-code-quality.mdc`](agent-adapters/cursor/ai-code-quality.mdc) |
+| 任何 Agent | 直接整份喂给模型 | [`agent-adapters/generic/PROMPT.md`](agent-adapters/generic/PROMPT.md) |
+
+装好后对 Agent 说"帮我审一下这个项目的代码质量"即可；各 harness 安装点与同步命令见
+[`agent-adapters/README.md`](agent-adapters/README.md)。
+
 - **当 CLI 用**：`cq scan --project <任意Python仓库>` → `audits/<run_id>/` 下的统一 findings 报告
   （聚合 ruff / mypy / radon / vulture / pytest-cov / import-linter / DeepSec L1+L2，
   全程本地离线、只读、密钥自动脱敏）
@@ -141,7 +167,8 @@ cq gate --run <新run_id> --baseline baseline --target A   # 5. 质量门验收
   目标 B 放宽到 ≤2 high。工具有 error/timeout 时直接 exit 2（结果不完整不许当达标）。
   附带 local_rating（security/reliability/maintainability 的 A-E 本地近似口径，非 Sonar 官方评级）。
 - **suppress**：确认误报/暂不修的 finding 走豁免，**必须写理由**，落 `<项目>/.cq/suppressions.json`
-  （建议入版本库，评审可见）。命中后 status=suppressed：不计入 gate/diff 判定，报告单列"已豁免"节。
+  （**本仓库就提交了这份文件**——2 条 deepsec 误报各带理由/时间/来源 run，豁免留痕可评审）。
+  命中后 status=suppressed：不计入 gate/diff 判定，报告单列"已豁免"节。
 - 基线文件在 `audits/baselines/<名字>.json`，自包含 findings，源 run 清理后仍可用。
 - **fix**：分批修复计划，默认 dry-run（只出计划落 `fix-plan.json`，不改代码）。
   `--apply` 是用户显式批准的载体：必须配 `--batch N`（一次一批），且只对"自动修复"批次开放

@@ -54,7 +54,7 @@ def test_render_console_shows_install_hint():
 def test_doctor_covers_all_adapters_and_hints():
     # 真实探测一次：doctor 检查的是"工具"（ruff 一个工具供两个 adapter 用，pytest adapter 用两个工具），
     # 不变量 = 检查的工具集与 TESTED_VERSIONS 完全一致（加工具别忘 doctor 和版本记录）
-    checks = run_doctor(Config())
+    checks, _note = run_doctor(Config())
     tools = {c.tool for c in checks}
     assert tools == set(TESTED_VERSIONS), (
         f"doctor 与实测版本表不一致: {tools ^ set(TESTED_VERSIONS)}"

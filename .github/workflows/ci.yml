@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - name: ruff check
+        run: ruff check src tests
+      - name: ruff format
+        run: ruff format --check src tests
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install mypy
+      - name: mypy
+        run: python -m mypy src
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e . pytest pytest-cov
+      - name: pytest
+        run: python -m pytest tests -q --cov=ai_code_quality --cov-report=term
+
+  # 自举（dogfood）：cq 扫 cq 自己，守住我们给自己立的规矩——
+  # 工具不许 error/timeout，活跃 findings 不许有 blocker/high。
+  # deepsec 在 CI 里跳过（外部依赖），覆盖率中等的债务如实存在，不进本断言。
+  dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e . ruff mypy radon vulture pytest pytest-cov
+      - name: cq scan（自扫）
+        run: cq scan --project . --no-deepsec --adapters ruff-check,ruff-format,mypy,radon,vulture,pytest
+      - name: 自举断言
+        run: |
+          RUN=$(ls -t audits | head -1)
+          echo "run: $RUN"
+          python - "$RUN" <<'EOF'
+          import json, sys
+          from pathlib import Path
+
+          run = Path("audits") / sys.argv[1]
+          summary = json.loads((run / "summary.json").read_text(encoding="utf-8"))
+          findings = json.loads((run / "findings.json").read_text(encoding="utf-8"))["findings"]
+
+          bad_tools = [
+              f"{t['name']}:{t['status']}"
+              for t in summary["tools"]
+              if t["status"] in ("error", "timeout")
+          ]
+          assert not bad_tools, f"工具执行不完整: {bad_tools}"
+
+          active_bh = [
+              f"{f['source']}:{f['rule']}@{f['file']}:{f['line']}"
+              for f in findings
+              if f.get("status") != "suppressed" and f.get("severity") in ("blocker", "high")
+          ]
+          assert not active_bh, f"存在活跃 blocker/high: {active_bh}"
+          suppressed = [f for f in findings if f.get("status") == "suppressed"]
+          print(f"dogfood OK：工具全部正常完成，活跃 blocker/high = 0（豁免 {len(suppressed)} 条，理由见 .cq/suppressions.json）")
+          EOF
