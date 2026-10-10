@@ -16,18 +16,18 @@
 适配文件只允许写"何时调、怎么调、如何汇报"，禁止复制 cq 的实现细节，避免多份说明各自漂移。
 各文件的唯一详细版是 `generic/PROMPT.md`，其余文件只做触发与流程摘要并指向它。
 
-## 本机部署位置（SKILL.md 的安装点，新版本发布后需同步）
+## 多 harness 环境的部署（SKILL.md 的安装点）
 
-本机有多个 DSH home（相互隔离），SKILL.md 需同步到所有 harness 的 skills 目录：
+如果你的机器上有多个 Agent harness（多个 DSH home、Claude Code、Codex CLI），它们的 skills
+目录相互独立，SKILL.md 需要同步到每一个。以四个常见位置为例：
 
 | harness | 路径 |
 |---|---|
-| DSH（默认 home） | `~/.dsh/skills/ai-code-quality/SKILL.md` |
-| DSH（隔离 home，launch-official-dsh.cmd 启动） | `~/.dsh-official/skills/ai-code-quality/SKILL.md` |
+| DSH（各 home） | `<每个 home>/skills/ai-code-quality/SKILL.md` |
 | Claude Code | `~/.claude/skills/ai-code-quality/SKILL.md` |
 | Codex CLI | `~/.codex/skills/ai-code-quality/SKILL.md` |
 
-同步命令（仓库版为准）：
+同步命令（以仓库版为准）：
 
 ```bash
 SRC="agent-adapters/dsh/SKILL.md"

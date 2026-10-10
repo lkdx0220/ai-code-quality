@@ -8,7 +8,7 @@
 
 # deepsec 以源码仓库形态存在时的路径（会自动注入 PYTHONPATH 调用，无需 pip 安装）。
 # 也可以用环境变量 CQ_DEEPSEC_HOME。
-# deepsec_home = "C:/Users/you/Desktop/AI开发模板/DeepSec"
+# deepsec_home = "C:/path/to/DeepSec"
 
 # 承载 deepsec 的解释器（默认同 python）。
 # deepsec_python = "C:/Python313/python.exe"
