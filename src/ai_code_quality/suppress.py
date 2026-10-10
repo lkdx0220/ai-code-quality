@@ -162,7 +162,7 @@ def reapply(project_root: Path, run_findings: list[dict[str, object]]) -> dict[s
 
     matched = unmatched = refreshed = 0
     for item in items:
-        f = by_id.get(str(item.get("id")))
+        f: dict[str, object] | None = by_id.get(str(item.get("id")))
         if f is None:
             sig = _entry_sig(item)
             cands = by_sig.get(sig, []) if sig else []
