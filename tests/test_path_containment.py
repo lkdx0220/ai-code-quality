@@ -21,8 +21,15 @@ def _ctx(tmp_path: Path) -> ScanContext:
 
 def test_inside_root_path_kept(tmp_path):
     (tmp_path / "app").mkdir()
-    f = finding(_ctx(tmp_path), source="ruff", category="maintainability",
-                severity="high", file=tmp_path / "app" / "a.py", line=3, message="x")
+    f = finding(
+        _ctx(tmp_path),
+        source="ruff",
+        category="maintainability",
+        severity="high",
+        file=tmp_path / "app" / "a.py",
+        line=3,
+        message="x",
+    )
     assert f.file == "app/a.py" and f.severity == "high"
 
 
@@ -55,12 +62,26 @@ def test_outside_root_relative_escape_downgraded(tmp_path):
 
 
 def test_inside_root_relative_path_kept(tmp_path):
-    f = finding(_ctx(tmp_path), source="ruff", category="maintainability",
-                severity="medium", file="app/b.py", line=1, message="y")
+    f = finding(
+        _ctx(tmp_path),
+        source="ruff",
+        category="maintainability",
+        severity="medium",
+        file="app/b.py",
+        line=1,
+        message="y",
+    )
     assert f.file == "app/b.py" and f.severity == "medium"
 
 
 def test_empty_file_global_finding_untouched(tmp_path):
-    f = finding(_ctx(tmp_path), source="pytest", category="test",
-                severity="medium", file="", line=0, message="总覆盖率低于阈值")
+    f = finding(
+        _ctx(tmp_path),
+        source="pytest",
+        category="test",
+        severity="medium",
+        file="",
+        line=0,
+        message="总覆盖率低于阈值",
+    )
     assert f.severity == "medium" and f.file == ""
