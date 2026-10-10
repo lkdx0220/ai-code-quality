@@ -28,17 +28,29 @@ def test_inside_root_path_kept(tmp_path):
 
 def test_outside_root_abs_path_downgraded(tmp_path):
     # 绝对路径指向项目外（如 %TEMP% 的嵌套 pytest 一次性项目）→ 降级 info、file 清空、留痕
-    f = finding(_ctx(tmp_path), source="pytest", category="test",
-                severity="high", file=tmp_path.parent / "elsewhere" / "t.py", line=0,
-                message="test-error: t.py")
+    f = finding(
+        _ctx(tmp_path),
+        source="pytest",
+        category="test",
+        severity="high",
+        file=tmp_path.parent / "elsewhere" / "t.py",
+        line=0,
+        message="test-error: t.py",
+    )
     assert f.severity == "info" and f.file == ""
     assert "[项目外路径已降级]" in f.message
 
 
 def test_outside_root_relative_escape_downgraded(tmp_path):
-    f = finding(_ctx(tmp_path), source="pytest", category="test",
-                severity="high", file="../outside/tests/test_x.py", line=0,
-                message="test-error: test_x.py")
+    f = finding(
+        _ctx(tmp_path),
+        source="pytest",
+        category="test",
+        severity="high",
+        file="../outside/tests/test_x.py",
+        line=0,
+        message="test-error: test_x.py",
+    )
     assert f.severity == "info" and f.file == ""
 
 

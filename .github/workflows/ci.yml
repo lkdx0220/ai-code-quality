@@ -68,6 +68,8 @@ jobs:
         run: cq scan --project . --no-deepsec --adapters ruff-check,ruff-format,mypy,radon,vulture,pytest
       - name: 自举断言
         shell: bash
+        env:
+          PYTHONIOENCODING: utf-8  # Windows cp1252 控制台打印中文会 UnicodeEncodeError
         run: |
           RUN=$(ls -t audits | grep -v baselines | head -1)
           echo "run: $RUN"
