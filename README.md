@@ -1,8 +1,17 @@
-# ai-code-quality（`cq`）
+# ai-code-quality（`cq`）· AI Agent Skill
 
-通用、本地、只读的代码质量扫描 CLI：把 AI 写的代码按可复现的流程往质量门 A 级带。
+**这是一个 AI Agent Skill**：一份可安装到 DSH / Claude Code / Codex / Cursor 等任何 AI Agent 的
+说明文件（[`agent-adapters/`](agent-adapters/)），外加一个由它驱动的本地 CLI `cq`——
+把 AI 写的代码按可复现的流程，从"能跑但 AI 味重"带到质量门 A 级。
 
-一句话：`cq scan --project <任意Python仓库>` → `audits/<run_id>/` 下的统一 findings 报告。
+- **当 Skill 用**：把 [`agent-adapters/dsh/SKILL.md`](agent-adapters/dsh/SKILL.md) 装进你的 Agent
+  （各 harness 安装点见 [`agent-adapters/README.md`](agent-adapters/README.md)），
+  然后直接说"帮我审一下这个项目的代码质量"
+- **当 CLI 用**：`cq scan --project <任意Python仓库>` → `audits/<run_id>/` 下的统一 findings 报告
+  （聚合 ruff / mypy / radon / vulture / pytest-cov / import-linter / DeepSec L1+L2，
+  全程本地离线、只读、密钥自动脱敏）
+
+完整工作流：**扫描 → 环境体检 → 四维归因 → 固化基线 → 分批修复 → 复扫对比 → 质量门验收**。
 
 ## 设计原则
 
