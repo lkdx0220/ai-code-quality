@@ -88,8 +88,24 @@ class RuffCheckAdapter(Adapter):
                 version=version,
                 reason="无法启动 ruff 进程",
             )
-        # ruff: 0=干净 1=有违规 2=出错
+        # ruff: 0=干净 1=有违规 2=出错（部分文件失败时 stdout 仍可能有可解析结果）
         if proc.returncode not in (0, 1):
+            partial = [
+                f
+                for item in parse_ruff_json(proc.stdout)
+                for f in [self._item_to_finding(ctx, item, raw_ref)]
+            ]
+            if partial:
+                return AdapterResult(
+                    name=self.name,
+                    tool=self.tool,
+                    status="error",
+                    version=version,
+                    reason=f"ruff check 退出码 {proc.returncode}（部分文件错误，结果不完整）；"
+                    f"已保留 {len(partial)} 条可解析结果",
+                    findings=partial,
+                    raw_files=[raw_ref],
+                )
             return AdapterResult(
                 name=self.name,
                 tool=self.tool,
@@ -99,27 +115,9 @@ class RuffCheckAdapter(Adapter):
                 raw_files=[raw_ref],
             )
 
-        findings: list[Finding] = []
-        for item in parse_ruff_json(proc.stdout):
-            code = str(item.get("code") or "")
-            category, severity = classify_ruff(code)
-            loc = cast("dict[str, object]", item.get("location") or {})
-            fix = item.get("fix")
-            findings.append(
-                finding(
-                    ctx,
-                    source="ruff",
-                    category=category,
-                    severity=severity,
-                    file=str(item.get("filename") or ""),
-                    line=int(cast("int", loc.get("row") or 0)),
-                    message=str(item.get("message") or code),
-                    rule=code,
-                    auto_fixable=bool(fix),
-                    fix_hint=f"ruff rule {code}" + ("（可 ruff --fix 自动修复）" if fix else ""),
-                    raw_ref=raw_ref,
-                )
-            )
+        findings: list[Finding] = [
+            self._item_to_finding(ctx, item, raw_ref) for item in parse_ruff_json(proc.stdout)
+        ]
         return AdapterResult(
             name=self.name,
             tool=self.tool,
@@ -128,4 +126,23 @@ class RuffCheckAdapter(Adapter):
             duration_s=proc.duration_s,
             findings=findings,
             raw_files=[raw_ref],
+        )
+
+    def _item_to_finding(self, ctx: ScanContext, item: dict[str, object], raw_ref: str) -> Finding:
+        code = str(item.get("code") or "")
+        category, severity = classify_ruff(code)
+        loc = cast("dict[str, object]", item.get("location") or {})
+        fix = item.get("fix")
+        return finding(
+            ctx,
+            source="ruff",
+            category=category,
+            severity=severity,
+            file=str(item.get("filename") or ""),
+            line=int(cast("int", loc.get("row") or 0)),
+            message=str(item.get("message") or code),
+            rule=code,
+            auto_fixable=bool(fix),
+            fix_hint=f"ruff rule {code}" + ("（可 ruff --fix 自动修复）" if fix else ""),
+            raw_ref=raw_ref,
         )

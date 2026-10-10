@@ -86,6 +86,12 @@ cq gate --run <新run> --baseline baseline --target A      # 质量门；exit 0 
 
 **豁免纪律**：确认误报或用户明确说"暂不修"时才用 `cq suppress`，必须带理由
 （`--action false_positive|debt_accepted --reason "…"`）。不许为了"让 gate 变绿"而豁免真问题。
+大改/全量格式化后行号漂移会使 id 失配：用 `cq suppress --reapply --run <新run>` 按签名
+（source+rule+file+message，不含行号）把存量豁免对齐到新 run，无需逐条重挂。
+
+**起步期覆盖率**：默认阈值 80% 对测试刚起步的仓库必然红。让用户在仓库根放 `cq.toml`
+设当前可达成的 `coverage_threshold`（如 40），配提升计划逐级上调；gate 红着才有指导意义，
+不要为变绿而豁免覆盖率。
 
 **自动修复纪律（cq fix）**：默认 dry-run 只出计划；`--apply` 必须先征得用户明确批准
 （一次一批：`cq fix --run <id> --batch N --apply`），且只对"自动修复"批次开放。

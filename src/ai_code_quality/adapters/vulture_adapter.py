@@ -74,12 +74,36 @@ class VultureAdapter(Adapter):
             )
         # vulture 实测退出码：0=干净，3=发现死代码（2.16）；其余按错误处理
         if proc.returncode not in (0, 3):
+            # 崩溃前 stdout 里可能已有可解析行——保留部分结果
+            partial = [
+                finding(
+                    ctx,
+                    source="vulture",
+                    category="maintainability",
+                    severity="medium" if conf >= 90 else "low",
+                    file=file,
+                    line=line,
+                    message=msg,
+                    rule=msg.split()[0] if msg else "vulture",
+                    fix_hint="确认后删除，或加白名单（vulture whitelist）",
+                    confidence="high" if conf >= 90 else "medium",
+                    raw_ref=raw_ref,
+                )
+                for file, line, msg, conf in parse_vulture_output(proc.stdout)
+            ]
+            reason = f"vulture 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}"
+            if partial:
+                reason = (
+                    f"vulture 退出码 {proc.returncode}（异常退出，结果不完整）；"
+                    f"已保留 {len(partial)} 条崩溃前结果。{reason}"
+                )
             return AdapterResult(
                 name=self.name,
                 tool=self.tool,
                 status="error",
                 version=version,
-                reason=f"vulture 退出码 {proc.returncode}: {proc.stderr.strip()[:200]}",
+                reason=reason,
+                findings=partial,
                 raw_files=[raw_ref],
             )
 

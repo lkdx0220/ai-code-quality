@@ -45,6 +45,8 @@ cq gate --run <run_id> --target A   # ③ 质量门：blocker/high/复杂度/覆
 - **零运行时依赖**：核心包只用 Python 标准库；外部工具全部 subprocess 调用。
 - **不许静默 pass**：工具缺失/超时/解析失败 → `skipped` / `timeout` / `error` + 原因，绝不当作通过。
 - **只读**：不改代码、不 commit；所有工具缓存重定向到 `audits/`，目标仓库 `git status` 不变（只多 `audits/`）。
+- **扫描范围与工具对齐**：扫描遵循目标仓库根 `.gitignore`（目录名/通配/相对路径的轻量子集，
+  不支持 `!` 否定——见到会提示；精确排除用 `cq.toml` 的 `respect_gitignore = false` 关闭或另行配置）。
 - **脱敏**：密钥/token 在任何产物落盘前统一替换为 `***REDACTED***`（含 raw 原始输出）。
 - **离线**：DeepSec L3 / SonarCloud / AI review 一律 opt-in，当前版本未实现、不会调用。
 
@@ -183,6 +185,8 @@ cq gate --run <新run_id> --baseline baseline --target A   # 5. 质量门验收
   附带 local_rating（security/reliability/maintainability 的 A-E 本地近似口径，非 Sonar 官方评级）。
 - **suppress**：确认误报/暂不修的 finding 走豁免，**必须写理由**，落 `<项目>/.cq/suppressions.json`
   （**本仓库就提交了这份文件**——2 条 deepsec 误报各带理由/时间/来源 run，豁免留痕可评审）。
+  豁免带行号无关签名（source+rule+file+message）：全量格式化/大改后行号漂移不再失配；
+  存量条目用 `cq suppress --reapply --run <新run>` 按签名对齐刷新。
   命中后 status=suppressed：不计入 gate/diff 判定，报告单列"已豁免"节。
 - 基线文件在 `audits/baselines/<名字>.json`，自包含 findings，源 run 清理后仍可用。
 - **fix**：分批修复计划，默认 dry-run（只出计划落 `fix-plan.json`，不改代码）。

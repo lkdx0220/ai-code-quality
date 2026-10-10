@@ -107,13 +107,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_gate.add_argument("--format", choices=["md", "json"], default="md")
 
     p_sup = sub.add_parser(
-        "suppress", help="豁免某条 finding（必须写理由），后续 scan/diff/gate 不再追究"
+        "suppress",
+        help="豁免某条 finding（必须写理由）；或 --reapply 按签名把存量豁免对齐到最新 run",
     )
     _add_run_ref_arg(p_sup)
-    p_sup.add_argument("--finding", required=True, help="finding id（≥8 位前缀即可）")
-    p_sup.add_argument("--action", choices=["false_positive", "debt_accepted"], required=True)
+    p_sup.add_argument("--finding", default=None, help="finding id（≥8 位前缀即可）")
+    p_sup.add_argument("--action", choices=["false_positive", "debt_accepted"], default=None)
     p_sup.add_argument(
-        "--reason", required=True, help="豁免理由（必填，进报告与 .cq/suppressions.json）"
+        "--reason", default=None, help="豁免理由（必填，进报告与 .cq/suppressions.json）"
+    )
+    p_sup.add_argument(
+        "--reapply",
+        action="store_true",
+        help="不新增豁免，把存量条目按签名重新对齐到 --run（大改/全量格式化后 id 失配时用）",
     )
 
     p_fix = sub.add_parser(
@@ -369,19 +375,43 @@ def _run_suppress_command(args: argparse.Namespace) -> int:
     run = _load_run_or_error(project, args.run)
     if run is None:
         return 3
+
+    if getattr(args, "reapply", False):
+        stats = suppress_mod.reapply(project, run.findings)
+        print(
+            f"已按签名对齐存量豁免：命中 {stats['matched']}（其中刷新 id {stats['refreshed']}），"
+            f"未命中 {stats['unmatched']}（保留原样，可能确已修复）"
+        )
+        print(f"  文件：{suppress_mod.suppressions_file(project)}")
+        return 0
+
+    if not (args.finding and args.action and args.reason):
+        print(
+            "错误：新增豁免需要 --finding/--action/--reason；如为存量条目对齐，用 --reapply",
+            file=sys.stderr,
+        )
+        return 3
+
     try:
         fid = suppress_mod.resolve_finding_id(run.findings, args.finding)
+        hit = next(f for f in run.findings if str(f.get("id")) == fid)
         sup, path = suppress_mod.add(
             project,
             finding_id=fid,
             action=args.action,
             reason=args.reason,
             source_run=run.run_id,
+            # 行号无关签名：全量格式化/大改后行号漂移，靠它保住豁免不失配
+            sig=(
+                str(hit.get("source") or ""),
+                str(hit.get("rule") or ""),
+                str(hit.get("file") or ""),
+                str(hit.get("message") or ""),
+            ),
         )
     except suppress_mod.SuppressionError as e:
         print(f"错误：{e}", file=sys.stderr)
         return 3
-    hit = next(f for f in run.findings if str(f.get("id")) == fid)
     print(f"已豁免并写入 {path}")
     print(
         f"  [{sup.action}] {hit.get('source')}:{hit.get('rule')} {hit.get('file')}:{hit.get('line')}"

@@ -83,12 +83,37 @@ class MypyAdapter(Adapter):
                 reason="无法启动 mypy 进程",
             )
         if proc.returncode not in (0, 1):  # mypy: 0=干净 1=有错误 2=致命错误
+            # 2=致命错误（如缓存目录不可写被伪装成 INTERNAL ERROR），但崩溃前
+            # 已产出的诊断仍在 stdout——保留可解析的部分结果
+            partial = [
+                finding(
+                    ctx,
+                    source="mypy",
+                    category="maintainability",
+                    severity="medium" if level == "error" else "low",
+                    file=file,
+                    line=line,
+                    message=msg,
+                    rule=code or "mypy",
+                    fix_hint=f"修复类型错误 [{code}]" if code else "",
+                    raw_ref=raw_ref,
+                )
+                for file, line, level, msg, code in parse_mypy_output(proc.stdout)
+                if level != "note"
+            ]
+            reason = f"mypy 退出码 {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:200]}"
+            if partial:
+                reason = (
+                    f"mypy 退出码 {proc.returncode}（致命错误，结果不完整）；已保留 {len(partial)} 条崩溃前诊断。"
+                    + reason
+                )
             return AdapterResult(
                 name=self.name,
                 tool=self.tool,
                 status="error",
                 version=version,
-                reason=f"mypy 退出码 {proc.returncode}: {(proc.stderr or proc.stdout).strip()[:200]}",
+                reason=reason,
+                findings=partial,
                 raw_files=[raw_ref],
             )
 

@@ -46,6 +46,9 @@ class Config:
     min_mi_rank: str = "C"  # 可维护性指数 C 及更差报 finding
     enabled_adapters: list[str] | None = None  # None = 全部启用
     no_deepsec: bool = False  # CLI --no-deepsec
+    # 扫描目标是否遵循根 .gitignore（轻量子集：目录名/通配/相对路径，不支持 ! 否定）。
+    # 与 ruff/pytest 等工具的忽略语义对齐；关掉则连 .gitignore 里的路径也扫。
+    respect_gitignore: bool = True
 
     def timeout_for(self, adapter_name: str) -> int:
         if adapter_name in self.timeout_overrides:
@@ -124,6 +127,7 @@ _KNOWN_KEYS = {
     "min_mi_rank": str,
     "enabled_adapters": list,
     "no_deepsec": bool,
+    "respect_gitignore": bool,
 }
 
 

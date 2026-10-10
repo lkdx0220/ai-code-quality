@@ -32,8 +32,12 @@ description: "INVOKE THIS SKILL when the user asks to 审查代码, 代码质量
    其余批次按 triage 指引人工修。一次只修一类，每批跑测试。
 6. `cq scan` 复扫 → `cq diff --run <新run> --baseline baseline`（exit 1 = 有新增 blocker/high，
    必须处理）→ `cq gate --run <新run> --baseline baseline --target A` 验收。
-7. 确认误报/用户说暂不修的 finding 用 `cq suppress`（必须带理由）。
+7. 确认误报/用户说暂不修的 finding 用 `cq suppress`（必须带理由）；
+   大改/全量格式化后 id 失配时用 `cq suppress --reapply --run <新run>` 按签名对齐。
 8. 汇报：diff 的数字（新增 X / 修复 Y / 仍存在 Z / 豁免 W）+ gate 各检查项状态 + 产物路径。
+
+起步期覆盖率提示：默认阈值 80% 对测试刚起步的仓库必然红。让用户在仓库根放 `cq.toml`
+设一个当前可达成的 `coverage_threshold`（如 40），配提升计划逐级上调——gate 红着才有意义。
 </workflow>
 
 <hard-rules>

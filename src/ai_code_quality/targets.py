@@ -82,15 +82,85 @@ def _is_excluded_dir(d: Path) -> bool:
     return any(fnmatch.fnmatch(d.name, p) for p in EXCLUDE_DIR_PATTERNS)
 
 
-def _iter_py_files(root: Path) -> list[Path]:
+def _iter_py_files(
+    root: Path, gi: _Gitignore | None = None, notes: list[str] | None = None
+) -> list[Path]:
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         d = Path(dirpath)
-        dirnames[:] = [n for n in dirnames if not _is_excluded_dir(d / n)]
+        dirnames[:] = [
+            n
+            for n in dirnames
+            if not _is_excluded_dir(d / n) and not (gi and gi.match(d / n, is_dir=True))
+        ]
         for fn in filenames:
-            if fn.endswith(".py"):
-                out.append(d / fn)
+            if not fn.endswith(".py"):
+                continue
+            full = d / fn
+            if gi and gi.match(full, is_dir=False):
+                continue
+            out.append(full)
     return sorted(out)
+
+
+class _Gitignore:
+    """轻量 .gitignore 子集：目录名（`dir/`）、basename 通配（`*.pyc`）、
+    相对根路径（`legacy/old.py`）。不支持 `!` 否定（见到就记 note）与嵌套 .gitignore。
+    覆盖真实仓库的绝大多数用法；要精确排除用 cq.toml。"""
+
+    def __init__(self, root: Path, lines: list[str]) -> None:
+        self.root = root
+        self.dir_names: set[str] = set()
+        self.base_globs: list[str] = []
+        self.rel_paths: list[str] = []
+        self.negations = 0
+        for raw in lines:
+            line = raw.rstrip()
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s.startswith("!"):
+                self.negations += 1
+                continue
+            if s.endswith("/"):
+                self.dir_names.add(s.rstrip("/"))
+                continue
+            if "/" in s:
+                self.rel_paths.append(s)
+            else:
+                self.base_globs.append(s)
+
+    @classmethod
+    def load(cls, root: Path, notes: list[str] | None = None) -> _Gitignore | None:
+        p = root / ".gitignore"
+        if not p.is_file():
+            return None
+        try:
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return None
+        gi = cls(root, lines)
+        if gi.negations and notes is not None:
+            notes.append(
+                f".gitignore 含 {gi.negations} 条 `!` 否定规则，cq 不支持（该类路径仍会被扫描）；"
+                "精确排除请用 cq.toml 的排除配置"
+            )
+        return gi
+
+    def match(self, path: Path, *, is_dir: bool) -> bool:
+        try:
+            rel = path.resolve().relative_to(self.root.resolve()).as_posix()
+        except (ValueError, OSError):
+            return False
+        parts = rel.split("/")
+        name = parts[-1]
+        # `dir/` 模式命中该目录本身（is_dir）及其下所有文件（任一层父目录命中即忽略）
+        dir_parts = parts if is_dir else parts[:-1]
+        if any(p in self.dir_names for p in dir_parts):
+            return True
+        if any(fnmatch.fnmatch(name, g) for g in self.base_globs):
+            return True
+        return any(rel == g or rel.startswith(g.rstrip("/") + "/") for g in self.rel_paths)
 
 
 def _looks_like_test(path: Path) -> bool:
@@ -189,12 +259,19 @@ def get_git_info(root: Path) -> GitInfo:
 
 
 def resolve_targets(
-    project_root: Path, *, scope: str = "full", git_info: GitInfo | None = None
+    project_root: Path,
+    *,
+    scope: str = "full",
+    git_info: GitInfo | None = None,
+    respect_gitignore: bool = True,
 ) -> ScanTargets:
     root = project_root.resolve()
     st = ScanTargets(project_root=root, scope=scope)
 
-    all_py = _iter_py_files(root)
+    # 与 ruff/pytest 等工具对齐：遵循根 .gitignore（轻量子集，见 _Gitignore）
+    gi = _Gitignore.load(root, st.notes) if respect_gitignore else None
+
+    all_py = _iter_py_files(root, gi, st.notes)
     src_tests = [p for p in all_py if _looks_like_test(p)]
     st.has_tests = bool(src_tests) or _has_pytest_config(root)
     st.test_paths = _test_roots(root, src_tests) or (
@@ -219,7 +296,7 @@ def resolve_targets(
 
     # full：src 布局优先；否则所有含 .py 的顶层入口（目录或散文件）
     src_dir = root / "src"
-    if src_dir.is_dir() and any(p.suffix == ".py" for p in _iter_py_files(src_dir)):
+    if src_dir.is_dir() and any(p.suffix == ".py" for p in _iter_py_files(src_dir, gi, st.notes)):
         st.targets = _top_entries_with_py(src_dir)
     else:
         st.targets = _top_entries_with_py(root)

@@ -82,6 +82,35 @@ class RuffFormatAdapter(Adapter):
                 reason="无法启动 ruff 进程",
             )
         if proc.returncode not in (0, 1):
+            # 退出码 2 = 部分文件无法处理（如非 UTF-8 编码），但 stdout 里
+            # 可解析文件的结果仍然有效——保留部分结果，不许让真实问题归零
+            partial = [
+                finding(
+                    ctx,
+                    source="ruff-format",
+                    category="maintainability",
+                    severity="low",
+                    file=path,
+                    line=0,
+                    message="格式与 ruff format 不一致",
+                    rule="format",
+                    auto_fixable=True,
+                    fix_hint="ruff format <file> 可自动修复",
+                    raw_ref=raw_ref,
+                )
+                for path in parse_format_json(proc.stdout)
+            ]
+            if partial:
+                return AdapterResult(
+                    name=self.name,
+                    tool=self.tool,
+                    status="error",
+                    version=version,
+                    reason=f"ruff format 退出码 {proc.returncode}（部分文件错误，结果不完整）；"
+                    f"已保留 {len(partial)} 条可解析结果",
+                    findings=partial,
+                    raw_files=[raw_ref],
+                )
             return AdapterResult(
                 name=self.name,
                 tool=self.tool,

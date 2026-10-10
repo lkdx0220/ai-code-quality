@@ -55,7 +55,9 @@ def run_scan(
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     git_info = get_git_info(root)
-    targets: ScanTargets = resolve_targets(root, scope=scope, git_info=git_info)
+    targets: ScanTargets = resolve_targets(
+        root, scope=scope, git_info=git_info, respect_gitignore=cfg.respect_gitignore
+    )
 
     # 解释器兜底：cq 装在 uv tool 隔离 venv 且未显式配置 python 时，
     # 自带解释器里没有外部工具——自动改用工具链全齐的系统解释器（说明进报告备注）
@@ -94,17 +96,26 @@ def run_scan(
 
     findings = sort_findings([f for r in results for f in r.findings])
 
-    # 应用项目级豁免（.cq/suppressions.json）：命中的 status → suppressed
+    # 应用项目级豁免（.cq/suppressions.json）：按 id 或行号无关签名匹配，命中 → status=suppressed
     from . import suppress as suppress_mod
 
     sup_items = suppress_mod.load(root)
-    sup_ids = {str(x.get("id")) for x in sup_items}
+    sup_ids, sup_sigs = suppress_mod.suppression_ids(root)
     for f in findings:
+        hit = None
         if f.id in sup_ids:
+            hit = next(x for x in sup_items if str(x.get("id")) == f.id)
+        else:
+            sig = (f.source, f.rule, f.file, f.message)
+            if sig in sup_sigs:
+                hit = next(
+                    (x for x in sup_items if suppress_mod._entry_sig(x) == sig),
+                    None,
+                )
+        if hit is not None:
             f.status = "suppressed"
-            item = next(x for x in sup_items if str(x.get("id")) == f.id)
-            f.suppression_action = item.get("action", "")
-            f.suppression_reason = item.get("reason", "")
+            f.suppression_action = hit.get("action", "")
+            f.suppression_reason = hit.get("reason", "")
 
     summary = _build_summary(run_id, root, scope, cfg, git_info, targets, results, findings)
 
