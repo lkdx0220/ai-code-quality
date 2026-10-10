@@ -186,12 +186,94 @@ def _deepsec_source_version(home: Path) -> str:
         return "unknown（源码）"
 
 
+# 兜底探测：cq 装在 uv tool 隔离 venv 时，自带解释器里没有外部工具，
+# 但系统 Python 里往往全有。默认解释器缺核心工具且未被显式指定时，
+# 自动找一台全齐的系统解释器顶上，避免"看着像缺 5 个工具、诱导重复安装"的陷阱。
+REQUIRED_TOOLS = ("ruff", "mypy", "radon", "vulture", "pytest")
+_SENTINEL = "ruff"
+
+
+def _has_sentinel(py: str) -> bool:
+    """单次哨兵探测（约 0.2s）：ruff 在则视为该解释器已配置过工具链。"""
+    return probe([py, "-m", _SENTINEL, "--version"], timeout=20).returncode == 0
+
+
+def _probe_required(py: str) -> set[str]:
+    have: set[str] = set()
+    for mod in REQUIRED_TOOLS:
+        if probe([py, "-m", mod, "--version"], timeout=20).returncode == 0:
+            have.add(mod)
+    return have
+
+
+def _candidate_pythons() -> list[str]:
+    """系统解释器候选：Windows py 启动器 → PATH 上的 python/python3，去重保序。"""
+    out: list[str] = []
+    r = probe(["py", "-3", "-c", "import sys; print(sys.executable)"], timeout=20)
+    line = r.stdout.strip().splitlines()[0] if r.stdout.strip() else ""
+    if r.returncode == 0 and line:
+        out.append(line)
+    for name in ("python", "python3"):
+        exe = shutil.which(name)
+        if exe:
+            out.append(exe)
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for p in out:
+        key = str(Path(p).resolve()).lower()
+        if key not in seen:
+            seen.add(key)
+            uniq.append(p)
+    return uniq
+
+
+def resolve_tool_python(
+    cfg: Config,
+    *,
+    probe_required: Callable[[str], set[str]] | None = None,
+    candidates: Callable[[], list[str]] | None = None,
+) -> tuple[str, str]:
+    """返回（应使用的解释器, 说明）。
+
+    哨兵探测（ruff）确认默认解释器缺核心工具、且该解释器未被用户显式指定
+    （env/CLI/cq.toml 指过的都不动）时，依次尝试系统解释器候选，
+    找到 5 个核心工具全齐的就换过去；说明非空 = 发生了自动切换（含固化建议）。
+    健康环境只多付一次哨兵探测（约 0.2s）。
+    """
+    import sys as _sys
+
+    _probe = probe_required or _probe_required
+    primary = cfg.python
+    if _SENTINEL in _probe(primary):
+        return primary, ""
+    explicit = Path(primary).resolve() != Path(_sys.executable).resolve()
+    if explicit:
+        return primary, ""  # 用户显式指定的解释器：不擅自换，缺失由 doctor/scan 如实报告
+    missing = set(REQUIRED_TOOLS) - _probe(primary)
+    for cand in (candidates or _candidate_pythons)():
+        if str(Path(cand).resolve()).lower() == str(Path(primary).resolve()).lower():
+            continue
+        if set(REQUIRED_TOOLS) <= _probe(cand):
+            note = (
+                f"cq 自带解释器缺 {'/'.join(sorted(missing))}，已自动改用系统解释器；"
+                f"固化方式（任选其一）：设环境变量 CQ_PYTHON={cand}、"
+                "仓库根 cq.toml 的 [tool] python、或每次传 --python"
+            )
+            return cand, note
+    return primary, ""
+
+
 def run_doctor(
     cfg: Config, probe_fn: Callable[[], list[ToolCheck]] | None = None
-) -> list[ToolCheck]:
-    """probe_fn 供测试注入；默认真实探测。"""
+) -> tuple[list[ToolCheck], str]:
+    """probe_fn 供测试注入；默认真实探测。返回（检查结果, 解释器切换说明）。"""
     if probe_fn is not None:
-        return probe_fn()
+        return probe_fn(), ""
+    note: str = ""
+    if not _has_sentinel(cfg.python):
+        chosen, note = resolve_tool_python(cfg)
+        if note:
+            cfg.python = chosen
     py = cfg.python
     checks = [
         _check_pymod(
@@ -268,7 +350,7 @@ def run_doctor(
         )
     )
     checks.append(_check_deepsec(cfg))
-    return checks
+    return checks, note
 
 
 def doctor_summary(checks: list[ToolCheck]) -> dict[str, object]:

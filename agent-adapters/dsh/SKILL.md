@@ -52,4 +52,16 @@ description: "INVOKE THIS SKILL when the user asks to 审查代码, 代码质量
 cq 的能力来自 8 个外部工具，不一定已安装。`cq doctor` 会告诉你缺什么、装到哪。
 安装知识只在 doctor 一处维护：不要凭记忆拼安装命令，一律以 doctor 输出为准。
 
+**解释器陷阱（新机器必踩，先看这段再决定装不装）**：cq 装在 uv tool/pipx 隔离 venv 时，
+`cq doctor` 默认只探 cq 自带解释器——系统 Python 里已装好的工具链它一开始看不见。
+doctor/scan 已内置兜底：默认解释器缺核心工具时自动改用 PATH 上工具链全齐的系统 Python，
+并在输出里给出固化命令。若要显式指定：
+
+```bash
+cq doctor --python <系统python.exe> --deepsec-home <DeepSec仓库路径>   # 显式探测
+# 固化（任选其一）：设 CQ_PYTHON / CQ_DEEPSEC_HOME 环境变量；仓库根 cq.toml；每次传 --python
+```
+
+**不要一看到"缺 5 个工具"就 pip install 重装一遍**——先确认是不是解释器指错了。
+
 详细说明见仓库 `agent-adapters/generic/PROMPT.md`（与本文件同步维护，以仓库版本为准）。

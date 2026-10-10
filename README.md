@@ -44,6 +44,16 @@ cq doctor                # 人读：✅/❌ + 版本 + 缺失工具的安装命�
 cq doctor --format json  # 给 AI Agent 消费（见 agent-adapters/generic/PROMPT.md 的 bootstrap 纪律）
 ```
 
+**解释器提示（uv tool / pipx 安装的必读）**：cq 装在隔离 venv 时，默认只探自带的解释器，
+系统 Python 里已装好的工具链它一开始看不见——别急着 pip install 重装一遍。
+doctor/scan 已内置兜底：默认解释器缺核心工具时自动改用 PATH 上工具链全齐的系统 Python，
+并在输出里给出固化命令（`CQ_PYTHON` 环境变量 / 仓库根 `cq.toml` / `--python`，任选其一）。
+deepsec 的源码仓库路径同理用 `CQ_DEEPSEC_HOME` 固化。显式复核：
+
+```bash
+cq doctor --python <系统python.exe> --deepsec-home <DeepSec仓库路径>
+```
+
 手动安装（装进 cq 使用的那个 Python，默认当前解释器，`CQ_PYTHON` 可覆盖）：
 
 ```bash

@@ -403,12 +403,18 @@ def _run_doctor_command(args: argparse.Namespace) -> int:
     if getattr(args, "deepsec_python", None):
         overrides["deepsec_python"] = args.deepsec_python
     cfg = Config.load(Path("."), cli_overrides=overrides)
-    summary = doctor_summary(run_doctor(cfg))
+    checks, python_note = run_doctor(cfg)
+    summary = doctor_summary(checks)
     summary["cq_version"] = __version__
+    summary["python"] = cfg.python
+    if python_note:
+        summary["python_note"] = python_note
     if args.format == "json":
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     else:
         print(render_console(cfg.python, summary))
+        if python_note:
+            print(f"\n说明：{python_note}")
     # 0=全部就绪；2=有缺失（不阻塞 scan，但相应维度无结论）
     return 0 if summary["all_available"] else 2
 

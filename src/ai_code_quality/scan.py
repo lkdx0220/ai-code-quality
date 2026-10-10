@@ -57,6 +57,16 @@ def run_scan(
     git_info = get_git_info(root)
     targets: ScanTargets = resolve_targets(root, scope=scope, git_info=git_info)
 
+    # 解释器兜底：cq 装在 uv tool 隔离 venv 且未显式配置 python 时，
+    # 自带解释器里没有外部工具——自动改用工具链全齐的系统解释器（说明进报告备注）
+    from .doctor import _has_sentinel, resolve_tool_python
+
+    if not _has_sentinel(cfg.python):
+        chosen, python_note = resolve_tool_python(cfg)
+        if python_note:
+            cfg.python = chosen
+            targets.notes.append(python_note)
+
     ctx = ScanContext(
         project_root=root,
         run_dir=run_dir,
@@ -154,7 +164,7 @@ def _build_summary(
         "project_root": str(root),
         "scope": scope,
         "scanned_targets": [str(t) for t in targets.targets],
-        "python": sys.executable,
+        "python": cfg.python,  # 实际跑工具的解释器（可能经兜底切换，见 notes）
         "platform": {
             "system": platform.system(),
             "release": platform.release(),
