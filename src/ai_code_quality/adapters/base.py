@@ -101,7 +101,7 @@ def finding(
     **kw: object,
 ) -> Finding:
     """构造 Finding 的统一入口：file 归一化 + raw_ref 前缀。"""
-    raw_ref = kw.pop("raw_ref", "")
+    raw_ref = str(kw.pop("raw_ref", ""))
     if raw_ref and not raw_ref.startswith("raw/"):
         raw_ref = f"raw/{raw_ref}"
     return Finding(

@@ -101,14 +101,14 @@ def main(argv: list[str] | None = None) -> int:
         from .config import Config
         from .doctor import doctor_summary, render_console, run_doctor
 
-        overrides: dict[str, object] = {}
+        doc_overrides: dict[str, object] = {}
         if getattr(args, "python", None):
-            overrides["python"] = args.python
+            doc_overrides["python"] = args.python
         if getattr(args, "deepsec_home", None):
-            overrides["deepsec_home"] = args.deepsec_home
+            doc_overrides["deepsec_home"] = args.deepsec_home
         if getattr(args, "deepsec_python", None):
-            overrides["deepsec_python"] = args.deepsec_python
-        cfg = Config.load(Path("."), cli_overrides=overrides)
+            doc_overrides["deepsec_python"] = args.deepsec_python
+        cfg = Config.load(Path("."), cli_overrides=doc_overrides)
         summary = doctor_summary(run_doctor(cfg))
         summary["cq_version"] = __version__
         if args.format == "json":

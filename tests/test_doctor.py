@@ -1,6 +1,5 @@
 import json
 
-
 from ai_code_quality.config import Config
 from ai_code_quality.doctor import (
     DEEPSEC_REPO,

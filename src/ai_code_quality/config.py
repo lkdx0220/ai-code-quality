@@ -57,7 +57,7 @@ class Config:
         project_root: Path,
         *,
         cli_overrides: dict[str, object] | None = None,
-    ) -> "Config":
+    ) -> Config:
         cfg = Config()
         # 1) 项目配置文件
         for name in CONFIG_FILENAMES:
@@ -65,7 +65,9 @@ class Config:
             if p.is_file():
                 data = _parse_toml(p)
                 if data:
-                    cfg = _apply(cfg, data.get("tool", {}))
+                    tool_section = data.get("tool", {})
+                    if isinstance(tool_section, dict):
+                        cfg = _apply(cfg, tool_section)
                     # 顶层键也接受（tool. 前缀省略的写法）
                     cfg = _apply(cfg, {k: v for k, v in data.items() if k != "tool"})
                 break

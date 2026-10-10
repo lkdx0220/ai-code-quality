@@ -36,9 +36,9 @@ def get_adapters(enabled: list[str] | None = None) -> list[Adapter]:
 
 
 __all__ = [
+    "ADAPTER_NAMES",
+    "ALL_ADAPTERS",
     "Adapter",
     "ScanContext",
-    "ALL_ADAPTERS",
-    "ADAPTER_NAMES",
     "get_adapters",
 ]

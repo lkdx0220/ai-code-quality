@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from ..schema import AdapterResult, Finding
 from .base import Adapter, ScanContext, finding
@@ -18,7 +19,7 @@ def classify_ruff(code: str) -> tuple[str, str]:
         return "security", "high"
     if code.startswith(("F", "B")):  # 未使用导入/变量、bugbear
         return "maintainability", "medium"
-    if code.startswith("E4") or code.startswith("W"):
+    if code.startswith(("E4", "W")):
         return "maintainability", "low"
     return "maintainability", "medium"
 
@@ -102,7 +103,7 @@ class RuffCheckAdapter(Adapter):
         for item in parse_ruff_json(proc.stdout):
             code = str(item.get("code") or "")
             category, severity = classify_ruff(code)
-            loc = item.get("location") or {}
+            loc = cast("dict[str, object]", item.get("location") or {})
             fix = item.get("fix")
             findings.append(
                 finding(
@@ -111,7 +112,7 @@ class RuffCheckAdapter(Adapter):
                     category=category,
                     severity=severity,
                     file=str(item.get("filename") or ""),
-                    line=int(loc.get("row") or 0),
+                    line=int(cast("int", loc.get("row") or 0)),
                     message=str(item.get("message") or code),
                     rule=code,
                     auto_fixable=bool(fix),

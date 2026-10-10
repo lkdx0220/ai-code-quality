@@ -179,23 +179,22 @@ class PytestCovAdapter(Adapter):
             cov_text = cov_json.read_text(encoding="utf-8", errors="replace")
             raw_files.append(self.write_raw(ctx, "coverage.json", cov_text))
             cov = parse_coverage_json(cov_text)
-            if cov:
-                if cov["percent"] < ctx.cfg.coverage_threshold:
-                    findings.append(
-                        finding(
-                            ctx,
-                            source="pytest",
-                            category="test",
-                            severity="medium" if cov["percent"] >= 50 else "high",
-                            file="",
-                            line=0,
-                            message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
-                            f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
-                            rule="coverage",
-                            fix_hint="优先给核心分支补测试",
-                            raw_ref=raw_files[-1],
-                        )
+            if cov and cov["percent"] < ctx.cfg.coverage_threshold:
+                findings.append(
+                    finding(
+                        ctx,
+                        source="pytest",
+                        category="test",
+                        severity="medium" if cov["percent"] >= 50 else "high",
+                        file="",
+                        line=0,
+                        message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
+                        f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
+                        rule="coverage",
+                        fix_hint="优先给核心分支补测试",
+                        raw_ref=raw_files[-1],
                     )
+                )
         elif not has_cov:
             ctx.notes.append("pytest-cov 未安装，覆盖率检查跳过（其余测试检查正常）")
 

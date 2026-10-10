@@ -118,7 +118,7 @@ class ImportLinterAdapter(Adapter):
                 raw_files=[raw_ref],
             )
 
-        kept, broken, blocks = parse_contracts(proc.stdout)
+        _kept, broken, blocks = parse_contracts(proc.stdout)
         findings = []
         for i, cid in enumerate(broken):
             evidence = "\n".join(blocks[i]) if i < len(blocks) else ""

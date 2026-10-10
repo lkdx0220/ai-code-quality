@@ -51,6 +51,7 @@ def run_cmd(
         proc = subprocess.run(
             [str(c) for c in cmd],
             capture_output=True,
+            check=False,
             timeout=timeout,
             cwd=str(cwd) if cwd else None,
             env=env,

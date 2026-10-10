@@ -47,7 +47,9 @@ def run_scan(
     if not root.is_dir():
         raise FileNotFoundError(f"项目目录不存在: {root}")
 
-    run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{scope}"
+    # astimezone() = 带时区的本地时间（DTZ005）：run_id 保持本地可读，created_at 带 offset 无歧义
+    now = datetime.now().astimezone()
+    run_id = f"{now:%Y%m%d-%H%M%S}-{scope}"
     run_dir = root / "audits" / run_id
     raw_dir = run_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +135,7 @@ def _build_summary(
 
     return {
         "run_id": run_id,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "cq_version": __version__,
         "project_root": str(root),
         "scope": scope,

@@ -1,9 +1,9 @@
+from ai_code_quality.adapters.deepsec_adapter import SECRET_EVIDENCE_PLACEHOLDER, _safe_evidence
 from ai_code_quality.adapters.mypy_adapter import parse_mypy_output
 from ai_code_quality.adapters.pytest_cov import parse_coverage_json, parse_pytest_failures
 from ai_code_quality.adapters.radon_adapter import _parse_cc_json, _parse_mi_json
 from ai_code_quality.adapters.ruff_check import classify_ruff, parse_ruff_json
 from ai_code_quality.adapters.ruff_format import parse_format_json
-from ai_code_quality.adapters.deepsec_adapter import SECRET_EVIDENCE_PLACEHOLDER, _safe_evidence
 from ai_code_quality.adapters.vulture_adapter import parse_vulture_output
 
 

@@ -8,9 +8,10 @@ README / PROMPT.md / Agent 都只教"跑 doctor、按提示装"，不复制安�
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import cast
 
 from .config import Config
 from .runner import probe
@@ -287,7 +288,8 @@ def render_console(py: str, summary: dict[str, object]) -> str:
     lines: list[str] = ["cq doctor · 环境体检", ""]
     lines.append(f"工具解释器：{py}（CQ_PYTHON / --python 可覆盖）")
     lines.append("")
-    for t in summary["tools"]:
+    tools = cast("list[dict[str, object]]", summary["tools"])
+    for t in tools:
         if t["available"]:
             ver = f"{t['version']:<10}" if t["version"] else ""
             form = f"  [{t['form']}]" if t.get("form") else ""
@@ -299,7 +301,7 @@ def render_console(py: str, summary: dict[str, object]) -> str:
             if t.get("detail"):
                 lines.append(f"     详情：{t['detail']}")
     lines.append("")
-    n_missing = summary["total"] - summary["available"]
+    n_missing = cast("int", summary["total"]) - cast("int", summary["available"])
     if n_missing == 0:
         lines.append("全部工具就绪，可直接 cq scan。")
     else:

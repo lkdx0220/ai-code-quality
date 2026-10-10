@@ -66,7 +66,6 @@ def build_report_md(summary: dict, findings: list[Finding]) -> str:
     lines.append("")
 
     # findings 明细（分级限额）
-    shown: dict[str, int] = {}
     for sev in ("blocker", "high", "medium", "low"):
         limit = _SEV_LIMIT[sev]
         if limit == 0:

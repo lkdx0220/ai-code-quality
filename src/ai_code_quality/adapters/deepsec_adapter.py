@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
+from typing import cast
 
 from ..schema import AdapterResult, Finding
 from .base import Adapter, ScanContext, finding
@@ -22,7 +23,7 @@ _SEV_MAP = {"critical": "blocker", "high": "high", "medium": "medium", "low": "l
 
 def _conf_to_word(conf: object) -> str:
     try:
-        c = float(conf)
+        c = float(cast("float", conf))
     except (TypeError, ValueError):
         return "medium"
     if c >= 0.8:
@@ -51,10 +52,11 @@ def _strip_secret_evidence(json_text: str) -> str:
         if not isinstance(item, dict):
             continue
         rule = str(item.get("detection_rule") or item.get("type") or "")
-        if "secret" in rule.lower() or "password" in rule.lower() or "credential" in rule.lower():
-            if item.get("evidence"):
-                item["evidence"] = SECRET_EVIDENCE_PLACEHOLDER
-                changed = True
+        if (
+            "secret" in rule.lower() or "password" in rule.lower() or "credential" in rule.lower()
+        ) and item.get("evidence"):
+            item["evidence"] = SECRET_EVIDENCE_PLACEHOLDER
+            changed = True
     if not changed:
         return json_text
     try:
@@ -172,13 +174,10 @@ class DeepsecAdapter(Adapter):
                         reason=f"deepsec {layer} 超时（>{ctx.cfg.timeout_for(self.name)}s）",
                         raw_files=raw_files,
                     )
-                if proc.returncode not in (0, 1):
-                    # 找到高危时 deepsec 可能以非零退出；只要产物在且能解析就继续，否则记错误
-                    if not out.is_file():
-                        errors.append(
-                            f"{layer}: 退出码 {proc.returncode} {proc.stderr.strip()[:150]}"
-                        )
-                        continue
+                # 找到高危时 deepsec 可能以非零退出；只要产物在且能解析就继续，否则记错误
+                if proc.returncode not in (0, 1) and not out.is_file():
+                    errors.append(f"{layer}: 退出码 {proc.returncode} {proc.stderr.strip()[:150]}")
+                    continue
                 if out.is_file():
                     text = out.read_text(encoding="utf-8", errors="replace")
                     text = _strip_secret_evidence(text)
@@ -194,7 +193,7 @@ class DeepsecAdapter(Adapter):
                                 category="security",
                                 severity=sev,
                                 file=str(item.get("target") or item.get("file") or ""),
-                                line=int(item.get("line") or 0),
+                                line=int(cast("int", item.get("line") or 0)),
                                 message=str(
                                     item.get("title")
                                     or item.get("message")

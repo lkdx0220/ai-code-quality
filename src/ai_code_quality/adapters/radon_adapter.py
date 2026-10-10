@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from ..schema import AdapterResult, Finding
 from .base import Adapter, ScanContext, finding
@@ -124,9 +125,11 @@ class RadonAdapter(Adapter):
                 kind = str(b.get("type", "function"))
                 block_queue.append((b, kind))
                 # class 块的方法嵌套在 "methods" 里，也是拆分对象
-                for m in b.get("methods", []) or []:
-                    if isinstance(m, dict):
-                        block_queue.append((m, str(m.get("type", "method"))))
+                methods = b.get("methods") or []
+                if isinstance(methods, list):
+                    for m in methods:
+                        if isinstance(m, dict):
+                            block_queue.append((m, str(m.get("type", "method"))))
             for b, kind in block_queue:
                 rank = str(b.get("rank", "A"))
                 if _RANK_ORDER.get(rank, 0) < worst_allowed:
@@ -138,7 +141,7 @@ class RadonAdapter(Adapter):
                         category="maintainability",
                         severity=CC_SEVERITY.get(rank, "medium"),
                         file=file,
-                        line=int(b.get("lineno") or 0),
+                        line=int(cast("int", b.get("lineno") or 0)),
                         message=f"{kind} '{b.get('name', '?')}' 圈复杂度 "
                         f"{b.get('complexity', '?')}（rank {rank}）",
                         rule=f"cc-{rank}",
@@ -178,7 +181,7 @@ class RadonAdapter(Adapter):
                 tool=self.tool,
                 status="timeout",
                 version=version,
-                reason=f"radon mi 超时",
+                reason="radon mi 超时",
                 raw_files=raw_files,
             )
 

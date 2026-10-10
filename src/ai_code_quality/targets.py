@@ -155,7 +155,8 @@ def _toml_has_section(path: Path, keys: tuple[str, ...]) -> bool:
                 return False
             data = data[k]
         return True
-    except Exception:
+    except (ImportError, OSError, tomllib.TOMLDecodeError, TypeError, KeyError):
+        # 坏 TOML / 非预期结构都视为"无该配置节"，保守回退默认行为
         return False
 
 
