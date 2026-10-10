@@ -71,18 +71,17 @@ def test_no_complete_candidate_keeps_primary():
 
 
 def test_candidate_same_as_primary_skipped(monkeypatch):
-    # Windows 大小写/分隔符差异不重复探测同一解释器
+    # 同一解释器（仅大小写差异）不重复探测。用相对名而不是 Windows 风格绝对路径：
+    # "C:/x" 与 "c:\\x" 只有在 Windows 上 resolve 后才相等，Linux 上是两个不同路径
+    # （CI 在 ubuntu 上跑，曾因此误判为"未跳过"）。
     probed = []
 
     def fake_probe(py):
         probed.append(py)
         return set()
 
-    def fake_candidates():
-        return ["c:\\somewhere\\python.exe"]
-
     cfg = Config()
-    cfg.python = "C:/Somewhere/PYTHON.EXE"
+    cfg.python = "PyMain"
     monkeypatch.setattr(sys, "executable", cfg.python)  # 视为默认解释器
-    resolve_tool_python(cfg, probe_required=fake_probe, candidates=fake_candidates)
-    assert probed.count("c:\\somewhere\\python.exe") == 0  # 同一解释器不再探测
+    resolve_tool_python(cfg, probe_required=fake_probe, candidates=lambda: ["pymain"])
+    assert probed.count("pymain") == 0  # 同一解释器不再探测
