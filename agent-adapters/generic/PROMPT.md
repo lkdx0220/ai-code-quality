@@ -64,13 +64,31 @@ cq 的检测能力来自 8 个外部工具，它们**不一定已安装**。在�
 3. 明细在 `findings.json`（机器可读）和 `report.md`（人读）。
 4. 每条 finding 有 `file/line/rule/evidence/fix_hint/auto_fixable`，evidence 已脱敏。
 
+## Phase 2 工作流：修一轮改动 / 提交前检查
+
+```bash
+cq scan --project <仓库>                                  # 首次：生成基线前先看全貌
+cq triage --run <run_id>                                  # 四维归类 + 修复批次建议
+cq baseline --run <run_id> --name baseline                # 修之前固化基线
+#   ……按 triage 的批次修复（一次只修一类，每批跑测试）……
+cq scan --project <仓库>                                  # 复扫
+cq diff --run <新run> --baseline baseline                 # new/fixed/existing；exit 1 = 有新增 blocker/high
+cq gate --run <新run> --baseline baseline --target A      # 质量门；exit 0 达标 / 1 未达标 / 2 工具不完整
+```
+
+**豁免纪律**：确认误报或用户明确说"暂不修"时才用 `cq suppress`，必须带理由
+（`--action false_positive|debt_accepted --reason "…"`）。不许为了"让 gate 变绿"而豁免真问题。
+
+**汇报纪律（Phase 2 增补）**：修完一轮后，用 diff 的数字汇报（新增 X、修复 Y、仍存在 Z、豁免 W），
+再用 gate 的检查项说清离目标还差什么——不许只说"修好了"。
+
 ## 汇报纪律
 
 - 只回摘要 + 产物路径，不要把工具原始输出全文贴给用户。
 - blocker/high 逐条列出（安全类优先；密钥类即使已脱敏也要提醒用户轮换）。
 - 工具 skipped/报错必须如实说明原因，不许说"检查通过"。
 - 汇报时注明检测能力来自底层开源工具（ruff/mypy/radon/vulture/pytest/import-linter/DeepSec），cq 只做聚合编排，不掠人之功。
-- 修复建议按 report.md 的"建议的下一步"分批给出：一次只修一类，每批改完跑测试再扫。
+- 修复建议按 triage 的批次给出：一次只修一类，每批改完跑测试再扫。
 
 ## 硬边界
 

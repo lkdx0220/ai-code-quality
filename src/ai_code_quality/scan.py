@@ -84,6 +84,18 @@ def run_scan(
 
     findings = sort_findings([f for r in results for f in r.findings])
 
+    # 应用项目级豁免（.cq/suppressions.json）：命中的 status → suppressed
+    from . import suppress as suppress_mod
+
+    sup_items = suppress_mod.load(root)
+    sup_ids = {str(x.get("id")) for x in sup_items}
+    for f in findings:
+        if f.id in sup_ids:
+            f.status = "suppressed"
+            item = next(x for x in sup_items if str(x.get("id")) == f.id)
+            f.suppression_action = item.get("action", "")
+            f.suppression_reason = item.get("reason", "")
+
     summary = _build_summary(run_id, root, scope, cfg, git_info, targets, results, findings)
 
     # ---- 落盘（全部经 redact） ----
@@ -126,12 +138,14 @@ def _build_summary(
     by_sev: dict[str, int] = {}
     by_cat: dict[str, int] = {}
     by_src: dict[str, int] = {}
-    for f in findings:
+    suppressed = [f for f in findings if f.status == "suppressed"]
+    active = [f for f in findings if f.status != "suppressed"]
+    for f in active:
         by_sev[f.severity] = by_sev.get(f.severity, 0) + 1
         by_cat[f.category] = by_cat.get(f.category, 0) + 1
         by_src[f.source] = by_src.get(f.source, 0) + 1
 
-    auto_fixable = sum(1 for f in findings if f.auto_fixable)
+    auto_fixable = sum(1 for f in active if f.auto_fixable)
 
     return {
         "run_id": run_id,
@@ -155,6 +169,8 @@ def _build_summary(
         "tools": [r.to_dict() for r in results],
         "totals": {
             "findings": len(findings),
+            "active": len(active),
+            "suppressed": len(suppressed),
             "by_severity": by_sev,
             "by_category": by_cat,
             "by_source": by_src,

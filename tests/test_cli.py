@@ -1,3 +1,4 @@
+import pytest
 
 from ai_code_quality.cli import build_parser, main
 
@@ -10,20 +11,37 @@ def test_parser_has_scan_and_doctor():
     assert args.command == "doctor"
 
 
-def test_parser_placeholder_subcommands_exist():
+def test_parser_phase2_subcommands_exist():
     parser = build_parser()
-    for name in ("triage", "fix", "gate", "baseline", "diff"):
-        args = parser.parse_args([name])
+    required = {
+        "triage": [],
+        "baseline": [],
+        "diff": ["--baseline", "b"],
+        "gate": [],
+        "suppress": ["--finding", "f", "--action", "false_positive", "--reason", "r"],
+    }
+    for name, extra in required.items():
+        args = parser.parse_args([name, "--run", "x", *extra])
         assert args.command == name
+    # fix 仍是占位（Phase 3）
+    with pytest.raises(SystemExit):
+        parser.parse_args(["fix"])
 
 
 def test_main_no_command_prints_help():
     assert main([]) == 1
 
 
-def test_main_unimplemented_command_exits_1(capsys):
-    assert main(["gate"]) == 1
-    assert "Phase 2" in capsys.readouterr().err
+def test_main_unknown_command_rejected_by_argparse():
+    # argparse 层直接拒绝非法子命令（exit 2）；cli 里的"未知子命令"分支是防御性兜底
+    with pytest.raises(SystemExit):
+        main(["frobnicate"])
+
+
+def test_main_gate_requires_run():
+    # gate 缺 --run → argparse 直接报错退出
+    with pytest.raises(SystemExit):
+        main(["gate"])
 
 
 def test_main_scan_missing_project(tmp_path):

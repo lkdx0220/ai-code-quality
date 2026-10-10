@@ -1,4 +1,7 @@
-"""cq 命令行入口。已实现：scan（扫描）、doctor（环境体检）；triage/fix/gate/diff 属 Phase 2+。"""
+"""cq 命令行入口。
+
+已实现：scan / doctor / triage / baseline / diff / gate / suppress；fix 属 Phase 3（默认只出计划，--apply 需用户批准）。
+"""
 
 from __future__ import annotations
 
@@ -74,16 +77,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_doc.add_argument("--deepsec-python", default=None, help="承载 deepsec 的解释器")
 
-    # Phase 2+ 的占位：提前声明退出码语义，避免下游 agent 依赖错误行为
-    for name, help_text in [
-        ("triage", "findings 归因分级（Phase 2）"),
-        ("fix", "分批修复计划（Phase 2，默认 dry-run）"),
-        ("gate", "质量门验收（Phase 2）"),
-        ("baseline", "把某次 run 固化为基线（Phase 2）"),
-        ("diff", "两次 run 对比（Phase 2）"),
-    ]:
-        sub.add_parser(name, help=help_text, description=f"{help_text}：尚未实现")
+    # ---- Phase 2：基线 / 对比 / 质量门 / 归因 / 豁免 ----
+    p_tri = sub.add_parser("triage", help="findings 归因分级：四维归类 + 处置建议 + 修复批次")
+    _add_run_ref_arg(p_tri)
+    p_tri.add_argument("--format", choices=["md", "json"], default="md")
+
+    p_base = sub.add_parser("baseline", help="把某次 run 固化为具名基线（供 diff/gate 引用）")
+    _add_run_ref_arg(p_base)
+    p_base.add_argument("--name", default="baseline", help="基线名（字母/数字/_/-）")
+
+    p_diff = sub.add_parser("diff", help="当前 run 对比基线：new / fixed / existing / moved")
+    _add_run_ref_arg(p_diff)
+    p_diff.add_argument("--baseline", required=True, help="基线名或另一次 run 的 id/前缀")
+    p_diff.add_argument("--format", choices=["md", "json"], default="md")
+
+    p_gate = sub.add_parser(
+        "gate", help="质量门验收。退出码：0 达标 / 1 未达标 / 2 工具执行错误 / 3 配置错误"
+    )
+    _add_run_ref_arg(p_gate)
+    p_gate.add_argument(
+        "--baseline", default=None, help="基线名或 run id（启用'新增 blocker/high=0'检查）"
+    )
+    p_gate.add_argument(
+        "--target",
+        choices=["A", "B"],
+        default="A",
+        help="A：0 blocker/0 high；B：0 blocker/≤2 high",
+    )
+    p_gate.add_argument("--format", choices=["md", "json"], default="md")
+
+    p_sup = sub.add_parser(
+        "suppress", help="豁免某条 finding（必须写理由），后续 scan/diff/gate 不再追究"
+    )
+    _add_run_ref_arg(p_sup)
+    p_sup.add_argument("--finding", required=True, help="finding id（≥8 位前缀即可）")
+    p_sup.add_argument("--action", choices=["false_positive", "debt_accepted"], required=True)
+    p_sup.add_argument(
+        "--reason", required=True, help="豁免理由（必填，进报告与 .cq/suppressions.json）"
+    )
     return parser
+
+
+def _add_run_ref_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--project", default=".", help="项目路径（默认当前目录）")
+    parser.add_argument("--run", required=True, help="run id（支持唯一前缀）")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -102,13 +139,184 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.command == "doctor":
         return _run_doctor_command(args)
+    if args.command == "triage":
+        return _run_triage_command(args)
+    if args.command == "baseline":
+        return _run_baseline_command(args)
+    if args.command == "diff":
+        return _run_diff_command(args)
+    if args.command == "gate":
+        return _run_gate_command(args)
+    if args.command == "suppress":
+        return _run_suppress_command(args)
     if args.command != "scan":
-        print(
-            f"错误：`cq {args.command}` 属于 Phase 2+，本次未实现。当前可用：cq scan / cq doctor",
-            file=sys.stderr,
-        )
+        print(f"错误：未知子命令 {args.command}", file=sys.stderr)
         return 1
     return _run_scan_command(args)
+
+
+def _load_run_or_error(project: Path, run_ref: str):
+    from .runs import load_run
+
+    try:
+        return load_run(project, run_ref)
+    except LookupError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return None
+
+
+def _run_triage_command(args: argparse.Namespace) -> int:
+    from .triage import run_triage
+
+    project = Path(args.project)
+    if not project.is_dir():
+        print(f"错误：项目目录不存在: {project}", file=sys.stderr)
+        return 3
+    try:
+        code, text = run_triage(project, args.run, fmt=args.format)
+    except LookupError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    print(text)
+    return code
+
+
+def _run_baseline_command(args: argparse.Namespace) -> int:
+    from .baseline import save_baseline
+
+    project = Path(args.project)
+    try:
+        path, run = save_baseline(project, args.run, args.name)
+    except (LookupError, ValueError) as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    total = len(run.findings)
+    print(f"基线已保存：{path}")
+    print(f"  来源 run：{run.run_id}（{total} 条 findings）")
+    print(
+        f"  后续用法：cq diff --run <新run> --baseline {args.name} / cq gate --run <新run> --baseline {args.name}"
+    )
+    return 0
+
+
+def _run_diff_command(args: argparse.Namespace) -> int:
+    import json as _json
+
+    from .baseline import load_baseline
+    from .diff import diff_findings
+
+    project = Path(args.project)
+    run = _load_run_or_error(project, args.run)
+    if run is None:
+        return 3
+    try:
+        base_ref, base = load_baseline(project, args.baseline)
+    except (LookupError, ValueError) as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+
+    result = diff_findings(base.findings, run.findings)
+    payload = {
+        "run_id": run.run_id,
+        "baseline": base_ref,
+        "baseline_run": base.run_id,
+        **result.summary_counts(),
+        "new_details": [
+            {k: f.get(k) for k in ("id", "severity", "source", "rule", "file", "line", "message")}
+            for f in result.new
+        ],
+        "fixed_details": [
+            {k: f.get(k) for k in ("id", "severity", "source", "rule", "file", "line", "message")}
+            for f in result.fixed
+        ],
+        "moved": result.moved,
+    }
+    out_path = run.run_dir / "diff.json"
+    out_path.write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.format == "json":
+        print(_json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        counts = result.summary_counts()
+        print(f"diff · {run.run_id} vs {base_ref}（{base.run_id}）")
+        print()
+        print(
+            f"  新增 {counts['new']}（其中 blocker/high {len(result.new_blocker_high)}）· "
+            f"已修复 {counts['fixed']} · 仍存在 {counts['existing']}"
+            f"（行号漂移 {counts['moved']}）· 豁免 {counts['suppressed']}"
+        )
+        for f in result.new[:20]:
+            print(
+                f"  + [{f.get('severity')}] {f.get('source')}:{f.get('rule')} {f.get('file')}:{f.get('line')} {f.get('message')}"
+            )
+        for f in result.fixed[:20]:
+            print(
+                f"  - [{f.get('severity')}] {f.get('source')}:{f.get('rule')} {f.get('file')}:{f.get('line')} {f.get('message')}"
+            )
+        print()
+        print(f"  产物：{out_path}")
+    # 1 = 有新增 blocker/high（与 gate 语义一致），供脚本直接判断
+    return 1 if result.new_blocker_high else 0
+
+
+def _run_gate_command(args: argparse.Namespace) -> int:
+    import json as _json
+
+    from .gate import render_console, run_gate
+
+    project = Path(args.project)
+    try:
+        report = run_gate(project, args.run, baseline_ref=args.baseline, target=args.target)
+    except LookupError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    except ValueError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+
+    out_path = _load_run_or_error(project, args.run)
+    gate_path = out_path.run_dir / "gate.json" if out_path else None
+    if gate_path:
+        gate_path.write_text(
+            _json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    if args.format == "json":
+        print(_json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(render_console(report))
+        if gate_path:
+            print(f"\n  产物：{gate_path}")
+    return report.exit_code
+
+
+def _run_suppress_command(args: argparse.Namespace) -> int:
+    from . import suppress as suppress_mod
+
+    project = Path(args.project)
+    run = _load_run_or_error(project, args.run)
+    if run is None:
+        return 3
+    try:
+        fid = suppress_mod.resolve_finding_id(run.findings, args.finding)
+        sup, path = suppress_mod.add(
+            project,
+            finding_id=fid,
+            action=args.action,
+            reason=args.reason,
+            source_run=run.run_id,
+        )
+    except suppress_mod.SuppressionError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    hit = next(f for f in run.findings if str(f.get("id")) == fid)
+    print(f"已豁免并写入 {path}")
+    print(
+        f"  [{sup.action}] {hit.get('source')}:{hit.get('rule')} {hit.get('file')}:{hit.get('line')}"
+    )
+    print(f"  理由：{sup.reason}")
+    print("  下次 scan 起 status=suppressed，diff/gate 不再追究；如需立即生效请重新 scan。")
+    return 0
 
 
 def _run_doctor_command(args: argparse.Namespace) -> int:

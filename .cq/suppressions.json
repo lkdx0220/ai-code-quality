@@ -1,0 +1,18 @@
+{
+  "suppressions": [
+    {
+      "id": "a66a2892c00ab4ffcad6a7f45b58d3734384b6b6",
+      "action": "false_positive",
+      "reason": "脱敏正则中的示例模式串，非真实连接串（deepsec 密钥规则误报）",
+      "created_at": "2026-10-10T14:28:43+08:00",
+      "source_run": "20261010-141204-full"
+    },
+    {
+      "id": "8e2e92a39046abd4ca1ab1b1891db30b7aeed117",
+      "action": "false_positive",
+      "reason": "runner 用 subprocess.run + list 参数且无 shell=True，deepsec 把命令执行汇聚点本身标记为注入",
+      "created_at": "2026-10-10T14:28:50+08:00",
+      "source_run": "20261010-141204-full"
+    }
+  ]
+}

@@ -89,12 +89,40 @@ cq scan --project <path> [--scope full|changed] [--format json|md] [--timeout N]
         [--no-deepsec]
 
 cq doctor [--format json|md] [--python <解释器>] [--deepsec-home <路径>] [--deepsec-python <解释器>]
+
+cq triage    --run <run_id> [--project <path>] [--format json|md]
+cq baseline  --run <run_id> [--name baseline] [--project <path>]
+cq diff      --run <run_id> --baseline <基线名或run_id> [--project <path>] [--format json|md]
+cq gate      --run <run_id> [--baseline <基线名或run_id>] [--target A|B] [--project <path>] [--format json|md]
+cq suppress  --run <run_id> --finding <id前缀≥8位> --action false_positive|debt_accepted --reason "必填理由"
 ```
 
 `scan` 退出码：`0` 完成；`1` 参数错误；`2` 有工具 error/timeout（结果不完整但不丢弃）。
 `doctor` 退出码：`0` 全部工具就绪；`2` 有缺失（不阻塞 scan，供脚本/Agent 判断）。
+`diff` 退出码：`0` 无新增 blocker/high；`1` 有新增（供 CI/Agent 直接判断）；`3` run/基线解析失败。
+`gate` 退出码：`0` 达标；`1` 未达标（含新增 blocker/high）；`2` 工具执行错误（结果不完整）；`3` 配置/加载错误。
 
-`triage / fix / gate / baseline / diff` 属 Phase 2+，已在 CLI 占位、未实现。
+## Phase 2 工作流：基线 → 修复 → 对比 → 质量门
+
+```bash
+cq scan --project .                          # 1. 全量扫描
+cq baseline --run <run_id> --name baseline   # 2. 固化为基线（自包含，源 run 删了也能用）
+#   ……分批修复，一次只修一类，每批跑测试……
+cq scan --project .                          # 3. 复扫
+cq diff --run <新run_id> --baseline baseline # 4. new/fixed/existing/suppressed
+cq gate --run <新run_id> --baseline baseline --target A   # 5. 质量门验收
+```
+
+- **triage**：四维归类（安全/可靠性/可维护性/测试）+ 每条 finding 的处置建议
+  （auto_fixable / needs_test / needs_refactor / needs_decision / needs_review）+ 最有效的修复批次。
+- **diff**：两层匹配——精确 id 相同算 existing；同 (source,rule,file,message) 但行号漂移算
+  existing(moved)，不算 new/fixed，避免行号平移制造假警报。
+- **gate**：目标 A = 0 blocker / 0 high / 0 复杂度 D-E-F / 覆盖率 ≥ 阈值 / 新增 blocker/high = 0；
+  目标 B 放宽到 ≤2 high。工具有 error/timeout 时直接 exit 2（结果不完整不许当达标）。
+  附带 local_rating（security/reliability/maintainability 的 A-E 本地近似口径，非 Sonar 官方评级）。
+- **suppress**：确认误报/暂不修的 finding 走豁免，**必须写理由**，落 `<项目>/.cq/suppressions.json`
+  （建议入版本库，评审可见）。命中后 status=suppressed：不计入 gate/diff 判定，报告单列"已豁免"节。
+- 基线文件在 `audits/baselines/<名字>.json`，自包含 findings，源 run 清理后仍可用。
 
 ## Adapter 一览
 
@@ -146,6 +174,8 @@ finding schema（与交接方案 §6 一致）：
 
 ## 路线图
 
-- **Phase 2**：DeepSec 结果并入 triage；`baseline` / `diff`（fixed/new/existing）/ `gate`（blocker/high 新增即失败，本地 local_rating 近似 Sonar）。
-- **Phase 3**：DSH `SKILL.md` 与各 Agent 适配文件；可选 toolkit 插件。
+- ~~**Phase 1**~~ ✅ `cq scan` + `cq doctor`：8 adapter 统一报告、环境体检、安装引导。
+- ~~**Phase 2**~~ ✅ `cq triage` / `baseline` / `diff` / `gate` / `suppress`：基线对比、
+  新增 blocker/high 即失败、local_rating 近似评级、带理由豁免机制。
+- **Phase 3**：DSH `SKILL.md` 与各 Agent 适配文件；`cq fix`（分批修复计划，默认 dry-run）；可选 toolkit 插件。
 - **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review。

@@ -56,9 +56,13 @@ class Finding:
     evidence: str = ""
     fix_hint: str = ""
     auto_fixable: bool = False
-    status: str = "new"  # Phase 1 无基线，恒为 new；Phase 2 diff 时改 existing/fixed
+    status: str = (
+        "new"  # new|existing|fixed|suppressed|accepted；Phase 1 扫描恒为 new，diff/suppress 改写
+    )
     confidence: str = "high"  # 确定性工具默认 high
     raw_ref: str = ""
+    suppression_action: str = ""  # status=suppressed 时的动作（false_positive/debt_accepted）
+    suppression_reason: str = ""  # 豁免理由（必填，进报告）
     id: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:

@@ -82,10 +82,10 @@ def _severity_table(lines: list[str], totals: dict) -> None:
 
 
 def _finding_details(lines: list[str], findings: list[Finding], totals: dict) -> None:
-    """findings 明细（分级限额）；info 只计数。"""
+    """findings 明细（分级限额）；info 只计数；suppressed 单列豁免节。"""
     for sev in ("blocker", "high", "medium", "low"):
         limit = _SEV_LIMIT[sev]
-        group = [f for f in findings if f.severity == sev]
+        group = [f for f in findings if f.severity == sev and f.status != "suppressed"]
         if limit == 0 or not group:
             continue
         lines.append(f"## {sev.upper()}（{len(group)}）")
@@ -94,6 +94,16 @@ def _finding_details(lines: list[str], findings: list[Finding], totals: dict) ->
             _finding_line(lines, sev, f)
         if len(group) > limit:
             lines.append(f"- …另有 {len(group) - limit} 条，见 findings.json")
+        lines.append("")
+    suppressed = [f for f in findings if f.status == "suppressed"]
+    if suppressed:
+        lines.append(f"## 已豁免（{len(suppressed)}）")
+        lines.append("")
+        for f in suppressed:
+            action = f.suppression_action or "suppressed"
+            lines.append(
+                f"- ⚪ **[{f.source}] `{f.rule}`** `{f.file}:{f.line}` — {action}：{f.suppression_reason}"
+            )
         lines.append("")
     info_count = totals.get("by_severity", {}).get("info") or 0
     if info_count:
@@ -127,34 +137,47 @@ def _next_steps_section(lines: list[str], summary: dict, findings: list[Finding]
 
 
 def _next_steps(findings: list[Finding]) -> list[str]:
-    steps: list[str] = []
-    blockers = [f for f in findings if f.severity == "blocker"]
-    highs = [f for f in findings if f.severity == "high"]
-    security = [
-        f for f in findings if f.category == "security" and f.severity in ("blocker", "high")
-    ]
-    auto = [f for f in findings if f.auto_fixable]
-    complex_fn = [
-        f for f in findings if f.rule.startswith("cc-") and f.severity in ("high", "blocker")
-    ]
-
-    if blockers:
-        steps.append(f"先处理 {len(blockers)} 个 blocker（含复杂度 rank F / critical 安全问题）")
-    if security:
-        steps.append(
-            f"处理 {len(security)} 个高危安全问题（deepsec finding，先核对再修，密钥类必须轮换）"
-        )
-    if complex_fn:
-        steps.append(f"拆分 {len(complex_fn)} 个高复杂度函数（radon rank E/F）")
-    if highs:
-        steps.append(f"排查 {len(highs)} 个 high（类型错误 / 失败测试 / 未定义名）")
-    if auto:
-        steps.append(
-            f"{len(auto)} 条可自动修复（ruff --fix / ruff format），建议作为第一批，改完跑测试"
-        )
+    findings = [f for f in findings if f.status != "suppressed"]
+    counts = _severity_security_counts(findings)
+    steps = _prioritized_steps(findings, counts)
     if not steps:
         steps.append("没有 blocker/high：可转向覆盖率和架构治理（Phase 2 基线对比）")
     return steps[:5]
+
+
+def _severity_security_counts(findings: list[Finding]) -> dict[str, list[Finding]]:
+    return {
+        "blockers": [f for f in findings if f.severity == "blocker"],
+        "highs": [f for f in findings if f.severity == "high"],
+        "security": [
+            f for f in findings if f.category == "security" and f.severity in ("blocker", "high")
+        ],
+        "auto": [f for f in findings if f.auto_fixable],
+        "complex": [
+            f for f in findings if f.rule.startswith("cc-") and f.severity in ("high", "blocker")
+        ],
+    }
+
+
+def _prioritized_steps(findings: list[Finding], counts: dict[str, list[Finding]]) -> list[str]:
+    steps: list[str] = []
+    if counts["blockers"]:
+        steps.append(
+            f"先处理 {len(counts['blockers'])} 个 blocker（含复杂度 rank F / critical 安全问题）"
+        )
+    if counts["security"]:
+        steps.append(
+            f"处理 {len(counts['security'])} 个高危安全问题（deepsec finding，先核对再修，密钥类必须轮换）"
+        )
+    if counts["complex"]:
+        steps.append(f"拆分 {len(counts['complex'])} 个高复杂度函数（radon rank E/F）")
+    if counts["highs"]:
+        steps.append(f"排查 {len(counts['highs'])} 个 high（类型错误 / 失败测试 / 未定义名）")
+    if counts["auto"]:
+        steps.append(
+            f"{len(counts['auto'])} 条可自动修复（ruff --fix / ruff format），建议作为第一批，改完跑测试"
+        )
+    return steps
 
 
 def build_console_output(summary: dict, findings: list[Finding]) -> str:
