@@ -1,0 +1,16 @@
+---
+description: 代码质量工作流（cq）：提交前/重构前后扫描、质量门、"从 E 修到 A"
+globs: ["**/*.py"]
+alwaysApply: false
+---
+
+# cq 代码质量工作流
+
+使用 `cq` CLI 做本地质量闭环（ruff/mypy/radon/vulture/pytest-cov/import-linter/DeepSec 聚合）。
+
+- 先 `cq doctor` 确认工具就绪（缺失须征得用户同意再安装）。
+- 流程：`cq scan --project .` → `cq triage --run <id>` → `cq baseline --run <id> --name baseline`
+  → 分批修复（每批跑测试）→ 复扫 → `cq diff --run <新> --baseline baseline` → `cq gate --target A`。
+- 自动修复仅经 `cq fix --run <id> --batch N --apply`（用户显式批准），apply 后必跑测试，不自动 commit。
+- 误报用 `cq suppress`（必须写理由）；skipped/error 不算通过；报告只回摘要 + audits/ 产物路径。
+- 详细纪律见仓库 `agent-adapters/generic/PROMPT.md`。

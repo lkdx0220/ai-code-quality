@@ -95,6 +95,7 @@ cq baseline  --run <run_id> [--name baseline] [--project <path>]
 cq diff      --run <run_id> --baseline <基线名或run_id> [--project <path>] [--format json|md]
 cq gate      --run <run_id> [--baseline <基线名或run_id>] [--target A|B] [--project <path>] [--format json|md]
 cq suppress  --run <run_id> --finding <id前缀≥8位> --action false_positive|debt_accepted --reason "必填理由"
+cq fix       --run <run_id> [--batch N] [--apply] [--project <path>] [--format json|md]
 ```
 
 `scan` 退出码：`0` 完成；`1` 参数错误；`2` 有工具 error/timeout（结果不完整但不丢弃）。
@@ -123,6 +124,10 @@ cq gate --run <新run_id> --baseline baseline --target A   # 5. 质量门验收
 - **suppress**：确认误报/暂不修的 finding 走豁免，**必须写理由**，落 `<项目>/.cq/suppressions.json`
   （建议入版本库，评审可见）。命中后 status=suppressed：不计入 gate/diff 判定，报告单列"已豁免"节。
 - 基线文件在 `audits/baselines/<名字>.json`，自包含 findings，源 run 清理后仍可用。
+- **fix**：分批修复计划，默认 dry-run（只出计划落 `fix-plan.json`，不改代码）。
+  `--apply` 是用户显式批准的载体：必须配 `--batch N`（一次一批），且只对"自动修复"批次开放
+  （ruff check --fix + ruff format）；安全/复杂度/测试类批次给人工指引，apply 会明确拒绝。
+  apply 后不自动 commit，打印"跑测试 → 复扫 → diff → gate"闭环提示。
 
 ## Adapter 一览
 
@@ -177,5 +182,6 @@ finding schema（与交接方案 §6 一致）：
 - ~~**Phase 1**~~ ✅ `cq scan` + `cq doctor`：8 adapter 统一报告、环境体检、安装引导。
 - ~~**Phase 2**~~ ✅ `cq triage` / `baseline` / `diff` / `gate` / `suppress`：基线对比、
   新增 blocker/high 即失败、local_rating 近似评级、带理由豁免机制。
-- **Phase 3**：DSH `SKILL.md` 与各 Agent 适配文件；`cq fix`（分批修复计划，默认 dry-run）；可选 toolkit 插件。
-- **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review。
+- ~~**Phase 3**~~ ✅ `cq fix`（分批修复计划 + 显式 --apply）；DSH `SKILL.md`（已安装
+  `~/.dsh/skills/ai-code-quality/`）+ Codex/Claude/Cursor 薄适配文件（见 `agent-adapters/`）。
+- **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review、可选 toolkit 插件/MCP。

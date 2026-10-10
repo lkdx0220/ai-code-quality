@@ -115,6 +115,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_sup.add_argument(
         "--reason", required=True, help="豁免理由（必填，进报告与 .cq/suppressions.json）"
     )
+
+    p_fix = sub.add_parser(
+        "fix",
+        help="分批修复计划（默认 dry-run 只出计划；--apply 需显式批准且一次一批，改完必须跑测试）",
+    )
+    _add_run_ref_arg(p_fix)
+    p_fix.add_argument(
+        "--batch", type=int, default=None, help="批次号（--apply 时必填，一次只应用一批）"
+    )
+    p_fix.add_argument(
+        "--apply",
+        action="store_true",
+        help="真正执行该批次的自动修复命令（用户显式批准的载体；仅对'自动修复'批次开放）",
+    )
+    p_fix.add_argument("--format", choices=["md", "json"], default="md")
     return parser
 
 
@@ -149,10 +164,67 @@ def main(argv: list[str] | None = None) -> int:
         return _run_gate_command(args)
     if args.command == "suppress":
         return _run_suppress_command(args)
+    if args.command == "fix":
+        return _run_fix_command(args)
     if args.command != "scan":
         print(f"错误：未知子命令 {args.command}", file=sys.stderr)
         return 1
     return _run_scan_command(args)
+
+
+def _run_fix_command(args: argparse.Namespace) -> int:
+    import json as _json
+
+    from .config import Config
+    from .fix import FixError, apply_batch, build_fix_plan, render_console, save_plan
+
+    project = Path(args.project)
+    if not project.is_dir():
+        print(f"错误：项目目录不存在: {project}", file=sys.stderr)
+        return 3
+    run = _load_run_or_error(project, args.run)
+    if run is None:
+        return 3
+    if args.apply and args.batch is None:
+        print("错误：--apply 必须配合 --batch <批次号>（一次只应用一个批次）", file=sys.stderr)
+        return 3
+
+    cfg = Config.load(project)
+    batches = build_fix_plan(run, cfg.python)
+    plan_path = save_plan(run.run_dir, batches)
+
+    if args.format == "json":
+        print(
+            _json.dumps(
+                {"run_id": run.run_id, "batches": [b.to_dict() for b in batches]},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        if not args.apply:
+            return 0
+
+    if not args.apply:
+        print(render_console(run.run_id, batches, plan_path))
+        return 0
+
+    try:
+        cmds, output = apply_batch(project, batches, args.batch, timeout=cfg.timeout_for("fix"))
+    except FixError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    print(f"已应用批次 {args.batch}（{len(cmds)} 条命令）：")
+    for c in cmds:
+        print(f"  $ {c}")
+    print(output)
+    print()
+    print(f"计划/记录：{plan_path}")
+    print("接下来必做（不会自动执行，更不会 commit）：")
+    print("  1. 跑测试（确认自动修复没有破坏行为）")
+    print("  2. cq scan --project <项目> 复扫")
+    print("  3. cq diff --run <新run> --baseline <基线> 确认 fixed、无新增")
+    print("  4. cq gate --run <新run> --baseline <基线> 验收")
+    return 0
 
 
 def _load_run_or_error(project: Path, run_ref: str):

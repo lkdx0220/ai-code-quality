@@ -79,6 +79,10 @@ cq gate --run <新run> --baseline baseline --target A      # 质量门；exit 0 
 **豁免纪律**：确认误报或用户明确说"暂不修"时才用 `cq suppress`，必须带理由
 （`--action false_positive|debt_accepted --reason "…"`）。不许为了"让 gate 变绿"而豁免真问题。
 
+**自动修复纪律（cq fix）**：默认 dry-run 只出计划；`--apply` 必须先征得用户明确批准
+（一次一批：`cq fix --run <id> --batch N --apply`），且只对"自动修复"批次开放。
+apply 后必须跑测试，再 scan/diff/gate 闭环；绝不自动 commit。
+
 **汇报纪律（Phase 2 增补）**：修完一轮后，用 diff 的数字汇报（新增 X、修复 Y、仍存在 Z、豁免 W），
 再用 gate 的检查项说清离目标还差什么——不许只说"修好了"。
 
@@ -92,6 +96,6 @@ cq gate --run <新run> --baseline baseline --target A      # 质量门；exit 0 
 
 ## 硬边界
 
-- cq 只读，不会改代码、不会 commit；修复永远需要用户批准。
+- cq 默认只读，不会改代码、不会 commit；改代码的唯一入口是 `cq fix --apply`，且必须用户显式批准。
 - 密钥/token 不会出现在任何 cq 产物里（写入前统一脱敏）。
 - DeepSec L3 / 联网审查永远不会被 cq 默认调用。

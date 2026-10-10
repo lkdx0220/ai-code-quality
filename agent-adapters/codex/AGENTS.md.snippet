@@ -1,0 +1,16 @@
+<!-- 追加到项目根 AGENTS.md（或用户级 ~/.codex/AGENTS.md）。实现细节以 cq --help 与 agent-adapters/generic/PROMPT.md 为准。 -->
+
+## 代码质量工作流（cq）
+
+项目使用 `cq` CLI 做本地代码质量闭环（ruff/mypy/radon/vulture/pytest-cov/import-linter/DeepSec L1+L2 聚合）。
+
+- **何时**：大改动/重构前后、提交前检查、用户要质量/安全/复杂度/覆盖率扫描、"从 E 修到 A"。
+- **怎么做**：
+  1. 陌生环境先 `cq doctor --format json`，缺工具征得用户同意再装（绝不静默安装）。
+  2. `cq scan --project .` → 读 `audits/<run_id>/summary.json`；skipped/timeout/error 不算通过。
+  3. `cq triage` → 选批次 → `cq baseline` 固化基线 → 分批修复（每批跑测试）→ `cq scan` 复扫
+     → `cq diff --baseline baseline`（exit 1 = 有新增 blocker/high）→ `cq gate --target A`。
+  4. 自动修复：`cq fix --run <id> --batch N --apply`（需用户显式批准，apply 后必跑测试，不自动 commit）。
+  5. 误报/暂不修：`cq suppress`（必须写理由）。
+- **纪律**：只读优先；一次只修一类；suppression 必须带理由；报告只回摘要 + audits/ 产物路径；
+  注明检测能力来自底层开源工具。

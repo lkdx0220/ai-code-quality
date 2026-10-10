@@ -218,6 +218,8 @@ class PytestCovAdapter(Adapter):
         raw_files.append(self.write_raw(ctx, "coverage.json", cov_text))
         cov = parse_coverage_json(cov_text)
         if cov and cov["percent"] < ctx.cfg.coverage_threshold:
+            # message 不含具体数字（数字进 evidence）：数字每次都变，进了 message 会
+            # 让 finding id 每次漂移，diff 里制造一对假 new/fixed
             findings.append(
                 finding(
                     ctx,
@@ -226,9 +228,10 @@ class PytestCovAdapter(Adapter):
                     severity="medium" if cov["percent"] >= 50 else "high",
                     file="",
                     line=0,
-                    message=f"总覆盖率 {cov['percent']:.1f}% < 阈值 {ctx.cfg.coverage_threshold:g}%"
-                    f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
+                    message="总覆盖率低于阈值",
                     rule="coverage",
+                    evidence=f"{cov['percent']:.1f}% < {ctx.cfg.coverage_threshold:g}%"
+                    f"（{int(cov['covered_lines'])}/{int(cov['num_statements'])} 行）",
                     fix_hint="优先给核心分支补测试",
                     raw_ref=raw_files[-1],
                 )

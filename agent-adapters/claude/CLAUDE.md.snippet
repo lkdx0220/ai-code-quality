@@ -1,0 +1,12 @@
+<!-- 追加到项目根 CLAUDE.md（或 ~/.claude/CLAUDE.md）。实现细节以 cq --help 与 agent-adapters/generic/PROMPT.md 为准。 -->
+
+## 代码质量工作流（cq）
+
+本项目用 `cq` CLI 做本地质量闭环（ruff/mypy/radon/vulture/pytest-cov/import-linter/DeepSec L1+L2 聚合，只读优先）。
+
+- 触发场景：提交前/重构前后检查、质量或安全扫描请求、"从 E 修到 A" 工作流。
+- 标准流程：`cq doctor`（环境体检，缺工具须征得同意再装）→ `cq scan` → `cq triage` →
+  `cq baseline` → 分批修复（每批跑测试）→ 复扫 → `cq diff` → `cq gate --target A`。
+- `cq fix --apply` 是用户批准自动修复的唯一入口；apply 后必跑测试，绝不自动 commit。
+- 误报走 `cq suppress`（必须写理由）；工具 skipped/报错不许当"通过"汇报。
+- 汇报：摘要 + `audits/<run_id>/` 产物路径；检测能力来自底层开源工具，cq 只做聚合编排。
