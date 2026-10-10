@@ -1,4 +1,4 @@
-"""cq 命令行入口。Phase 1 只有 scan；triage/fix/gate/diff 等属 Phase 2+。"""
+"""cq 命令行入口。已实现：scan（扫描）、doctor（环境体检）；triage/fix/gate/diff 属 Phase 2+。"""
 
 from __future__ import annotations
 
@@ -33,6 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--deepsec-python", default=None, help="承载 deepsec 的 Python 解释器（默认同 --python）")
     p_scan.add_argument("--no-deepsec", action="store_true", help="跳过 deepsec 安全扫描")
 
+    p_doc = sub.add_parser("doctor", help="环境体检：探测 8 个外部工具，缺什么给什么安装命令")
+    p_doc.add_argument("--format", choices=["md", "json"], default="md",
+                       help="控制台输出格式（json 供 Agent 消费）")
+    p_doc.add_argument("--python", default=None, help="探测用的 Python 解释器（默认当前解释器 / CQ_PYTHON）")
+    p_doc.add_argument("--deepsec-home", default=None, help="deepsec 源码仓库路径（探测源码形态用）")
+    p_doc.add_argument("--deepsec-python", default=None, help="承载 deepsec 的解释器")
+
     # Phase 2+ 的占位：提前声明退出码语义，避免下游 agent 依赖错误行为
     for name, help_text in [
         ("triage", "findings 归因分级（Phase 2）"),
@@ -60,8 +67,29 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
+    if args.command == "doctor":
+        from .config import Config
+        from .doctor import doctor_summary, render_console, run_doctor
+
+        overrides: dict[str, object] = {}
+        if getattr(args, "python", None):
+            overrides["python"] = args.python
+        if getattr(args, "deepsec_home", None):
+            overrides["deepsec_home"] = args.deepsec_home
+        if getattr(args, "deepsec_python", None):
+            overrides["deepsec_python"] = args.deepsec_python
+        cfg = Config.load(Path("."), cli_overrides=overrides)
+        summary = doctor_summary(run_doctor(cfg))
+        summary["cq_version"] = __version__
+        if args.format == "json":
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+        else:
+            print(render_console(cfg.python, summary))
+        # 0=全部就绪；2=有缺失（不阻塞 scan，但相应维度无结论）
+        return 0 if summary["all_available"] else 2
+
     if args.command != "scan":
-        print(f"错误：`cq {args.command}` 属于 Phase 2+，本次未实现。当前可用：cq scan", file=sys.stderr)
+        print(f"错误：`cq {args.command}` 属于 Phase 2+，本次未实现。当前可用：cq scan / cq doctor", file=sys.stderr)
         return 1
 
     from .config import Config

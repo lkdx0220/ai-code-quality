@@ -34,6 +34,35 @@ cq 自身代码为原创，以 MIT 许可证发布（见 `LICENSE`）。
 如果你在报告中引用 cq 的扫描结果，建议同时注明底层工具，例如
 "扫描结果由 ruff / mypy / radon / vulture / pytest / import-linter / DeepSec 产出，cq 聚合"。
 
+## 前置工具：跑 `cq doctor`，缺什么按提示装
+
+cq 是编排器，检测能力来自上表 8 个外部工具，**它们需要你自行安装**（cq 不捆绑、不自动安装）。
+装没装齐，一条命令看结果：
+
+```bash
+cq doctor                # 人读：✅/❌ + 版本 + 缺失工具的安装命令
+cq doctor --format json  # 给 AI Agent 消费（见 agent-adapters/generic/PROMPT.md 的 bootstrap 纪律）
+```
+
+手动安装（装进 cq 使用的那个 Python，默认当前解释器，`CQ_PYTHON` 可覆盖）：
+
+```bash
+# 一次装齐 6 个核心+可选（MIT 许可，PyPI 直装）
+pip install ruff mypy radon vulture pytest pytest-cov import-linter
+
+# deepsec 二选一：
+pip install git+https://github.com/Unclecheng-li/DeepSec        # 形态一：pip 安装
+git clone https://github.com/Unclecheng-li/DeepSec <任意路径>    # 形态二：源码 + 环境变量
+set CQ_DEEPSEC_HOME=<clone 出来的路径>                            #   cq 经 PYTHONPATH 调用，无需安装
+```
+
+实测通过的版本（2026-10 · Python 3.13 · Windows）：ruff 0.16.9、mypy 2.3.1、radon 6.0.1、
+vulture 2.16、pytest 9.1.1、pytest-cov 7.1.0、import-linter 2.15、deepsec 0.2.0。
+ruff 等工具的默认规则集会随版本变化，跨版本对比扫描结果时留意。
+
+缺工具不会阻塞 `cq scan`（对应工具显示 `skipped` + 原因），但相应维度没有结论；
+其中 ruff/mypy/radon/vulture/pytest 是核心，pytest-cov/import-linter/deepsec 属可选增强。
+
 ## 安装与运行
 
 ```bash
@@ -58,9 +87,12 @@ cq scan --project <path> [--scope full|changed] [--format json|md] [--timeout N]
         [--adapters ruff-check,ruff-format,mypy,radon,vulture,pytest,import-linter,deepsec]
         [--python <解释器>] [--deepsec-home <DeepSec源码仓库>] [--deepsec-python <解释器>]
         [--no-deepsec]
+
+cq doctor [--format json|md] [--python <解释器>] [--deepsec-home <路径>] [--deepsec-python <解释器>]
 ```
 
-退出码：`0` 完成；`1` 参数错误；`2` 有工具 error/timeout（结果不完整但不丢弃）。
+`scan` 退出码：`0` 完成；`1` 参数错误；`2` 有工具 error/timeout（结果不完整但不丢弃）。
+`doctor` 退出码：`0` 全部工具就绪；`2` 有缺失（不阻塞 scan，供脚本/Agent 判断）。
 
 `triage / fix / gate / baseline / diff` 属 Phase 2+，已在 CLI 占位、未实现。
 

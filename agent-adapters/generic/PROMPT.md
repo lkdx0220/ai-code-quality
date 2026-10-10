@@ -43,6 +43,19 @@ cq scan --project <仓库路径> --adapters ruff-check,mypy,radon
 退出码：`0` 扫描完成；`2` 有工具执行出错/超时（结果不完整，看 summary.json 的 tools[].status）；
 `1` 参数/路径错误。
 
+## 环境引导（bootstrap）：换新机器 / 新环境必读
+
+cq 的检测能力来自 8 个外部工具，它们**不一定已安装**。在陌生环境第一次用 cq 前：
+
+1. **先跑 `cq doctor --format json`**（退出码 `0`=全部就绪，`2`=有缺失），不要假设工具已装。
+2. 有缺失时：把 doctor 返回的 `install` 字段里的命令**原样转告用户，征得同意后再安装**。
+   绝不未经用户同意就 pip install / git clone——安装软件是改系统状态，和"cq 只读"是同一个纪律。
+3. 注意 `python` 字段：工具必须装进**这个解释器**（cq 用它跑 `python -m ruff` 等）。
+   装错解释器 = doctor 仍然探测不到。
+4. deepsec 缺失允许降级：其余工具照跑，报告里安全维度是 skipped（无结论），要如实告诉用户。
+5. 装完重跑 `cq doctor` 确认，再 `cq scan`。
+6. 安装知识只在 doctor 一处维护：不要凭记忆给用户拼安装命令，一律以 doctor 输出为准。
+
 ## 怎么读结果
 
 1. 先看 `audits/<run_id>/summary.json` 的 `tools[]`：任何一个 `skipped/timeout/error` 都说明
