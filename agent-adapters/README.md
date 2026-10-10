@@ -15,3 +15,25 @@
 新增一个 Agent = 新增一个 markdown 文件，cq 本体零改动。
 适配文件只允许写"何时调、怎么调、如何汇报"，禁止复制 cq 的实现细节，避免多份说明各自漂移。
 各文件的唯一详细版是 `generic/PROMPT.md`，其余文件只做触发与流程摘要并指向它。
+
+## 本机部署位置（SKILL.md 的安装点，新版本发布后需同步）
+
+本机有多个 DSH home（相互隔离），SKILL.md 需同步到所有 harness 的 skills 目录：
+
+| harness | 路径 |
+|---|---|
+| DSH（默认 home） | `~/.dsh/skills/ai-code-quality/SKILL.md` |
+| DSH（隔离 home，launch-official-dsh.cmd 启动） | `~/.dsh-official/skills/ai-code-quality/SKILL.md` |
+| Claude Code | `~/.claude/skills/ai-code-quality/SKILL.md` |
+| Codex CLI | `~/.codex/skills/ai-code-quality/SKILL.md` |
+
+同步命令（仓库版为准）：
+
+```bash
+SRC="agent-adapters/dsh/SKILL.md"
+for home in ~/.dsh ~/.dsh-official ~/.claude ~/.codex; do
+  mkdir -p "$home/skills/ai-code-quality" && cp "$SRC" "$home/skills/ai-code-quality/SKILL.md"
+done
+```
+
+注意：harness 一般在**会话启动时**扫描 skills，装完/更新后要新开会话才会生效。
