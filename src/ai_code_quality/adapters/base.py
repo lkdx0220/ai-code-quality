@@ -101,17 +101,46 @@ def finding(
     message: str,
     **kw: object,
 ) -> Finding:
-    """构造 Finding 的统一入口：file 归一化 + raw_ref 前缀。"""
+    """构造 Finding 的统一入口：file 归一化 + raw_ref 前缀 + 项目根内校验。
+
+    路径校验（单一收口点）：解析出的文件路径必须落在 project_root 内。
+    工具输出偶尔携带项目外路径（如嵌套 pytest 在 %TEMP% 建的一次性项目），
+    这类"finding"不是本项目的结论——降级为 info、file 清空、message 标注，
+    可见但不进 blocker/high 门禁。"""
     raw_ref = str(kw.pop("raw_ref", ""))
     if raw_ref and not raw_ref.startswith("raw/"):
         raw_ref = f"raw/{raw_ref}"
+    rel = ctx.rel(file) if file else ""
+    if rel and not _inside_root(ctx, str(file)):
+        return Finding(
+            source=source,
+            category=category,
+            severity="info",
+            file="",
+            line=0,
+            message=f"[项目外路径已降级] {file} — {message}",
+            raw_ref=raw_ref,
+            **kw,  # type: ignore[arg-type]
+        )
     return Finding(
         source=source,
         category=category,
         severity=severity,
-        file=ctx.rel(file) if file else "",
+        file=rel,
         line=line,
         message=str(message),
         raw_ref=raw_ref,
         **kw,  # type: ignore[arg-type]
     )
+
+
+def _inside_root(ctx: ScanContext, file_str: str) -> bool:
+    """文件路径（相对路径按 project_root 解释，即工具运行的 cwd）是否落在项目根内。"""
+    p = Path(file_str)
+    if not p.is_absolute():
+        p = ctx.project_root / p
+    try:
+        p.resolve().relative_to(ctx.project_root.resolve())
+        return True
+    except (ValueError, OSError):
+        return False

@@ -123,6 +123,23 @@ class PytestCovAdapter(Adapter):
                 raw_files=raw_files,
             )
 
+        # 崩溃防御：退出码 1 但输出里既无结果摘要也无 FAILED/ERROR 行，
+        # 说明 pytest 根本没跑起来（如 tempfile 不可用导致的启动崩溃）——不许当 ok
+        if proc.returncode == 1 and not findings:
+            ran_marker = any(
+                kw in proc.stdout for kw in (" passed", " failed", "no tests ran", "error")
+            )
+            if not ran_marker:
+                tail = [ln for ln in (proc.stderr + proc.stdout).splitlines() if ln.strip()][-3:]
+                return AdapterResult(
+                    name=self.name,
+                    tool=self.tool,
+                    status="error",
+                    version=version,
+                    reason=f"pytest 异常退出（退出码 1）且无任何可解析结果：{' / '.join(tail)[:300]}",
+                    raw_files=raw_files,
+                )
+
         if proc.returncode == 5:
             findings.append(
                 finding(
@@ -158,6 +175,8 @@ class PytestCovAdapter(Adapter):
             "--tb=short",
             "-p",
             "no:cacheprovider",
+            # 显式固定 rootdir，防止宿主环境的 PYTEST_ADDOPTS/配置泄漏改变收集范围
+            f"--rootdir={ctx.project_root}",
             *[str(p) for p in ctx.test_paths],
         ]
         if has_cov and ctx.source_dirs:
@@ -168,8 +187,13 @@ class PytestCovAdapter(Adapter):
         return cmd
 
     def _child_env(self, ctx: ScanContext) -> dict[str, str]:
-        """缓存重定向 + PYTHONPATH：被测包可能没装进工具解释器
-        （如 src 布局未 pip install -e），把项目根（和 src/）加进去，否则收集直接 ImportError。"""
+        """缓存重定向 + PYTHONPATH + 注入通道隔离。
+
+        - PYTHONPATH：被测包可能没装进工具解释器（如 src 布局未 pip install -e），
+          把项目根（和 src/）加进去，否则收集直接 ImportError。
+        - PYTEST_* 清空：外层会话（cq 自身就常在 pytest 里跑）的注入变量
+          会改变子进程 pytest 的行为/插件加载，属于不可控通道。
+        """
         import os
 
         path_parts: list[str] = [str(ctx.project_root)]
@@ -178,10 +202,16 @@ class PytestCovAdapter(Adapter):
             path_parts.append(str(src_dir))
         if os.environ.get("PYTHONPATH"):
             path_parts.append(os.environ["PYTHONPATH"])
-        return {
+        env = {
             "COVERAGE_FILE": str(ctx.raw_dir / ".coverage"),
             "PYTHONPATH": os.pathsep.join(path_parts),
+            # 只清注入选项，不禁插件自动加载（pytest-cov 本身就是插件，禁了覆盖率会静默失效）
+            "PYTEST_ADDOPTS": "",
+            "PYTEST_PLUGINS": "",
         }
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            env["PYTEST_CURRENT_TEST"] = ""
+        return env
 
     def _failure_findings(self, ctx: ScanContext, stdout: str, raw_ref: str) -> list[Finding]:
         return [

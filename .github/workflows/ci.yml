@@ -31,10 +31,13 @@ jobs:
         run: python -m mypy src
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.11", "3.13"]
+        include:
+          - {os: ubuntu-latest, python-version: "3.11"}
+          - {os: ubuntu-latest, python-version: "3.13"}
+          - {os: windows-latest, python-version: "3.13"}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,19 +50,26 @@ jobs:
   # 自举（dogfood）：cq 扫 cq 自己，守住我们给自己立的规矩——
   # 工具不许 error/timeout，活跃 findings 不许有 blocker/high。
   # deepsec 在 CI 里跳过（外部依赖），覆盖率中等的债务如实存在，不进本断言。
+  # 双平台跑：路径/根目录处理是平台差异重灾区（两次真实回归都栽在这）。
   dogfood:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: pip install -e . ruff mypy radon vulture pytest pytest-cov
+      - name: 先跑一遍测试套件（复现"本地逐条复现 CI"的使用路径，留下 tmp 会话目录）
+        run: python -m pytest tests -q
       - name: cq scan（自扫）
         run: cq scan --project . --no-deepsec --adapters ruff-check,ruff-format,mypy,radon,vulture,pytest
       - name: 自举断言
+        shell: bash
         run: |
-          RUN=$(ls -t audits | head -1)
+          RUN=$(ls -t audits | grep -v baselines | head -1)
           echo "run: $RUN"
           python - "$RUN" <<'EOF'
           import json, sys
