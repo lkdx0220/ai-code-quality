@@ -108,6 +108,21 @@ ruff 等工具的默认规则集会随版本变化，跨版本对比扫描结果
 缺工具不会阻塞 `cq scan`（对应工具显示 `skipped` + 原因），但相应维度没有结论；
 其中 ruff/mypy/radon/vulture/pytest 是核心，pytest-cov/import-linter/deepsec 属可选增强。
 
+### 受限环境（CI 容器 / 只读缓存 / 杀软拦截）怎么跑
+
+临时目录或缓存不可写时，工具会以各种姿势崩溃——cq 会把崩溃**如实报为 error 而不是静默当 ok**
+（含"pytest 退出码 1 但零结果"的启动崩溃防御），但更好的做法是主动重定向：
+
+```powershell
+$env:TEMP = $env:TMP = "<可写目录>"                          # 临时目录
+ruff check --no-cache src tests                              # 免缓存
+ruff format --check --no-cache src tests
+mypy --cache-dir "<可写目录>/mypy" src                       # 缓存重定向（被拒时会伪装成 INTERNAL ERROR）
+pytest tests --basetemp="<可写目录>/pt" -p no:cacheprovider  # 注意：basetemp 不能是 cwd 或其父目录
+```
+
+看到 `mypy INTERNAL ERROR` 或 `pytest No usable temporary directory` 时，先查写权限再怀疑工具本身。
+
 ## 安装与运行
 
 ```bash

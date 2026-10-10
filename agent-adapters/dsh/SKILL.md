@@ -63,5 +63,7 @@ cq doctor --python <系统python.exe> --deepsec-home <DeepSec仓库路径>   # �
 ```
 
 **不要一看到"缺 5 个工具"就 pip install 重装一遍**——先确认是不是解释器指错了。
+另外：工具报 error/timeout 时先查环境（临时目录/缓存不可写），cq 会把崩溃如实报 error
+而非静默当 ok，受限环境配方见 README「受限环境怎么跑」。
 
 详细说明见仓库 `agent-adapters/generic/PROMPT.md`（与本文件同步维护，以仓库版本为准）。

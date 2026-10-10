@@ -58,8 +58,11 @@ cq 的检测能力来自 8 个外部工具，它们**不一定已安装**。在�
 4. 注意 `python` 字段：工具必须装进**这个解释器**（cq 用它跑 `python -m ruff` 等）。
    装错解释器 = doctor 仍然探测不到。
 5. deepsec 缺失允许降级：其余工具照跑，报告里安全维度是 skipped（无结论），要如实告诉用户。
-6. 装完重跑 `cq doctor` 确认，再 `cq scan`。
-7. 安装知识只在 doctor 一处维护：不要凭记忆给用户拼安装命令，一律以 doctor 输出为准。
+6. **error ≠ 工具坏**：工具报 error/timeout 时，先查环境（临时目录/缓存不可写、被杀软拦截）——
+   `mypy INTERNAL ERROR`、`pytest No usable temporary directory` 多是写权限问题；
+   cq 会把这类崩溃如实报 error（不会静默当 ok），受限环境配方见 README「受限环境怎么跑」。
+7. 装完重跑 `cq doctor` 确认，再 `cq scan`。
+8. 安装知识只在 doctor 一处维护：不要凭记忆给用户拼安装命令，一律以 doctor 输出为准。
 
 ## 怎么读结果
 
