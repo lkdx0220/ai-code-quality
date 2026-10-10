@@ -161,30 +161,30 @@ def reapply(project_root: Path, run_findings: list[dict[str, object]]) -> dict[s
         by_sig.setdefault(_sig_of(f), []).append(f)
 
     matched = unmatched = refreshed = 0
-    hit: dict[str, object] | None
     for item in items:
-        hit = by_id.get(str(item.get("id")))
+        hit: dict[str, object] | None = by_id.get(str(item.get("id")))
+        sig: tuple[str, str, str, str] | None = None
         if hit is None:
             sig = _entry_sig(item)
-            cands = by_sig.get(sig, []) if sig else []
-            if cands:
-                hit = cands.pop(0)  # 同签名多条时配第一条，消耗掉防止重复配
-                matched += 1
+            if sig is not None:
+                cands = by_sig.get(sig, [])
+                if cands:
+                    # 同签名多条时配第一条，消耗掉防止重复配
+                    hit = cands.pop(0)
+                    by_sig[sig] = cands
+        if hit is not None:
+            matched += 1
+            final_sig = _sig_of(hit)
+            if _entry_sig(item) != final_sig:
                 refreshed += 1
-                item["id"] = str(hit["id"])
-                (
-                    item["sig_source"],
-                    item["sig_rule"],
-                    item["sig_file"],
-                    item["sig_message"],
-                ) = sig  # type: ignore[assignment]
-                continue
+            item["id"] = str(hit["id"])
+            (
+                item["sig_source"],
+                item["sig_rule"],
+                item["sig_file"],
+                item["sig_message"],
+            ) = final_sig
+        else:
             unmatched += 1
-            continue
-        matched += 1
-        sig = _sig_of(hit)
-        if _entry_sig(item) != sig:
-            refreshed += 1
-        item["sig_source"], item["sig_rule"], item["sig_file"], item["sig_message"] = sig
     save(project_root, items)
     return {"matched": matched, "unmatched": unmatched, "refreshed": refreshed}
