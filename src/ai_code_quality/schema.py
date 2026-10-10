@@ -62,6 +62,8 @@ class Finding:
     id: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
+        if self.source not in SOURCES:
+            raise ValueError(f"bad source: {self.source!r}（合法值见 SOURCES，Phase 2+ 扩展）")
         if self.severity not in SEVERITIES:
             raise ValueError(f"bad severity: {self.severity!r}")
         if self.category not in CATEGORIES:
@@ -83,6 +85,7 @@ class AdapterResult:
     tool: str  # 展示用工具名，如 "ruff"
     status: str  # TOOL_STATUSES 之一
     reason: str = ""  # skipped/error/timeout 的原因（必填，不允许静默）
+    description: str = ""  # 该 adapter 检查什么（safe_run 从 Adapter 注入，报告展示用）
     version: str = ""
     duration_s: float = 0.0
     findings: list[Finding] = field(default_factory=list)
@@ -101,6 +104,7 @@ class AdapterResult:
         return {
             "name": self.name,
             "tool": self.tool,
+            "description": self.description,
             "status": self.status,
             "reason": self.reason,
             "version": self.version,

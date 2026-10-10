@@ -57,12 +57,13 @@ class Adapter:
         except Exception as exc:  # noqa: BLE001 - 单工具崩溃不能拖垮整个扫描
             tb = traceback.format_exc()
             self._write_error_file(ctx, tb)
-            return AdapterResult(
+            result = AdapterResult(
                 name=self.name,
                 tool=self.tool,
                 status="error",
                 reason=f"adapter 内部异常: {type(exc).__name__}: {exc}",
             )
+        result.description = self.description
         if result.status != "ok" and not result.reason:
             result.reason = f"status={result.status}（未提供原因）"
         return result

@@ -38,3 +38,11 @@ extend-exclude = ["tests/fixtures"]  # fixture 是埋雷演示仓库，不算本
 python_version = "3.11"
 ignore_missing_imports = true
 exclude = "tests/fixtures"
+
+[tool.vulture]
+min_confidence = 60
+# 豁免清单（理由必写，定期复审）：
+# - description: Adapter 子类的元数据，经 safe_run 注入 AdapterResult，在报告工具状态表展示
+# - SOURCES: 统一 schema 的 source 枚举契约（Finding 校验用），Phase 2 sonar/slop 扩展
+# - confidence: Finding 字段，经 asdict 序列化进 findings.json，vulture 看不到读取路径
+ignore_names = ["description", "SOURCES", "confidence"]

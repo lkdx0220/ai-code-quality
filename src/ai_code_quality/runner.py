@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -76,10 +76,3 @@ def run_cmd(
 def probe(cmd: list[str], *, timeout: int = 30, cwd=None, extra_env=None) -> ProcResult:
     """快速探测工具是否可用（通常 --version / --help）。"""
     return run_cmd(cmd, timeout=timeout, cwd=cwd, extra_env=extra_env)
-
-
-@dataclass
-class VersionProbe:
-    available: bool
-    version: str
-    detail: str = field(default="")

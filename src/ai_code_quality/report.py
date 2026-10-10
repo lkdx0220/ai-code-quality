@@ -56,6 +56,8 @@ def _tools_table(lines: list[str], summary: dict) -> None:
         status = t.get("status", "?")
         icon = _STATUS_ICON.get(status, "❓")
         reason = str(t.get("reason") or "").replace("|", "\\|").replace("\n", " ")
+        if not reason:
+            reason = str(t.get("description") or "")
         lines.append(
             f"| {t.get('tool')} ({t.get('name')}) | {icon} {status} | {t.get('version', '')} "
             f"| {t.get('duration_s', 0)}s | {t.get('finding_count', 0)} | {reason} |"
