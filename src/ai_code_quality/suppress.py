@@ -161,22 +161,28 @@ def reapply(project_root: Path, run_findings: list[dict[str, object]]) -> dict[s
         by_sig.setdefault(_sig_of(f), []).append(f)
 
     matched = unmatched = refreshed = 0
+    hit: dict[str, object] | None
     for item in items:
-        f: dict[str, object] | None = by_id.get(str(item.get("id")))
-        if f is None:
+        hit = by_id.get(str(item.get("id")))
+        if hit is None:
             sig = _entry_sig(item)
             cands = by_sig.get(sig, []) if sig else []
             if cands:
-                f = cands.pop(0)  # 同签名多条时配第一条，消耗掉防止重复配
+                hit = cands.pop(0)  # 同签名多条时配第一条，消耗掉防止重复配
                 matched += 1
                 refreshed += 1
-                item["id"] = str(f["id"])
-                item["sig_source"], item["sig_rule"], item["sig_file"], item["sig_message"] = sig  # type: ignore[assignment]
+                item["id"] = str(hit["id"])
+                (
+                    item["sig_source"],
+                    item["sig_rule"],
+                    item["sig_file"],
+                    item["sig_message"],
+                ) = sig  # type: ignore[assignment]
                 continue
             unmatched += 1
             continue
         matched += 1
-        sig = _sig_of(f)
+        sig = _sig_of(hit)
         if _entry_sig(item) != sig:
             refreshed += 1
         item["sig_source"], item["sig_rule"], item["sig_file"], item["sig_message"] = sig
