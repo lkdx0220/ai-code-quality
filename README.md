@@ -242,7 +242,12 @@ cq baseline  --run <run_id> [--name baseline] [--project <path>]
 cq diff      --run <run_id> --baseline <基线名或run_id> [--project <path>] [--format json|md]
 cq gate      --run <run_id> [--baseline <基线名或run_id>] [--target A|B] [--project <path>] [--format json|md]
 cq suppress  --run <run_id> --finding <id前缀≥8位> --action false_positive|debt_accepted --reason "必填理由"
+cq suppress  --run <run_id> --reapply                # 存量豁免按签名对齐到新 run（行号漂移后用）
 cq fix       --run <run_id> [--batch N] [--apply] [--project <path>] [--format json|md]
+
+# 以下两条需要项目根存在 .specdrift.toml（见「spec-drift」章节），否则旁路
+cq spec-gate --mode soft|hard [--paths a,b] [--project <path>]   # hard 漂移 exit 1
+cq waiver     --reason "必填理由" --ttl 30m|12h|7d [--change <id>] [--project <path>]
 ```
 
 `scan` 退出码：`0` 完成；`1` 参数错误；`2` 有工具 error/timeout（结果不完整但不丢弃）。
