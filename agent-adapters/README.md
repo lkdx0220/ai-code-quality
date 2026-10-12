@@ -23,6 +23,7 @@
 
 | harness | 路径 |
 |---|---|
+| ZCode | `~/.zcode/skills/ai-code-quality/SKILL.md` |
 | DSH（各 home） | `<每个 home>/skills/ai-code-quality/SKILL.md` |
 | Claude Code | `~/.claude/skills/ai-code-quality/SKILL.md` |
 | Codex CLI | `~/.codex/skills/ai-code-quality/SKILL.md` |
@@ -31,7 +32,7 @@
 
 ```bash
 SRC="agent-adapters/dsh/SKILL.md"
-for home in ~/.dsh ~/.dsh-official ~/.claude ~/.codex; do
+for home in ~/.zcode ~/.dsh ~/.dsh-official ~/.claude ~/.codex; do
   mkdir -p "$home/skills/ai-code-quality" && cp "$SRC" "$home/skills/ai-code-quality/SKILL.md"
 done
 ```
