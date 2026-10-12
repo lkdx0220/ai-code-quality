@@ -27,12 +27,15 @@
 | DSH（各 home） | `<每个 home>/skills/ai-code-quality/SKILL.md` |
 | Claude Code | `~/.claude/skills/ai-code-quality/SKILL.md` |
 | Codex CLI | `~/.codex/skills/ai-code-quality/SKILL.md` |
+| Trae（CN） | `~/.trae-cn/skills/ai-code-quality/SKILL.md` |
+| WorkBuddy | `~/.workbuddy/skills/ai-code-quality/SKILL.md` |
+| Kimi 桌面版 | ❌ 无本机 skill/rules 机制（Electron 聊天应用），不适用；要在 Kimi 里用只能手动粘贴 `generic/PROMPT.md` 内容作提示词 |
 
 同步命令（以仓库版为准）：
 
 ```bash
 SRC="agent-adapters/dsh/SKILL.md"
-for home in ~/.zcode ~/.dsh ~/.dsh-official ~/.claude ~/.codex; do
+for home in ~/.zcode ~/.dsh ~/.dsh-official ~/.claude ~/.codex ~/.trae-cn ~/.workbuddy; do
   mkdir -p "$home/skills/ai-code-quality" && cp "$SRC" "$home/skills/ai-code-quality/SKILL.md"
 done
 ```
