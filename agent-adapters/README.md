@@ -29,7 +29,7 @@
 | Codex CLI | `~/.codex/skills/ai-code-quality/SKILL.md` |
 | Trae（CN） | `~/.trae-cn/skills/ai-code-quality/SKILL.md` |
 | WorkBuddy | `~/.workbuddy/skills/ai-code-quality/SKILL.md` |
-| Kimi 桌面版 | ❌ 无本机 skill/rules 机制（Electron 聊天应用），不适用；要在 Kimi 里用只能手动粘贴 `generic/PROMPT.md` 内容作提示词 |
+| Kimi 桌面版（Daimon） | `%APPDATA%/kimi-desktop/daimon-share/daimon/skills/ai-code-quality/SKILL.md` |
 
 同步命令（以仓库版为准）：
 
@@ -38,6 +38,9 @@ SRC="agent-adapters/dsh/SKILL.md"
 for home in ~/.zcode ~/.dsh ~/.dsh-official ~/.claude ~/.codex ~/.trae-cn ~/.workbuddy; do
   mkdir -p "$home/skills/ai-code-quality" && cp "$SRC" "$home/skills/ai-code-quality/SKILL.md"
 done
+# Kimi 桌面版（Daimon）的 skills 在 AppData 下，单独同步：
+mkdir -p "$APPDATA/kimi-desktop/daimon-share/daimon/skills/ai-code-quality" &&
+  cp "$SRC" "$APPDATA/kimi-desktop/daimon-share/daimon/skills/ai-code-quality/SKILL.md"
 ```
 
 注意：harness 一般在**会话启动时**扫描 skills，装完/更新后要新开会话才会生效。
