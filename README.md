@@ -7,6 +7,12 @@
 说明文件（[`agent-adapters/`](agent-adapters/)），外加一个由它驱动的本地 CLI `cq`——
 把 AI 写的代码按可复现的流程，从"能跑但 AI 味重"带到质量门 A 级。
 
+> **🆕 v0.2.0 · spec-drift（可选）**：采用 spec 驱动工作流（如 OpenSpec）的项目现在可以启用
+> **防漂移门**——`cq spec-gate` 强制"代码变更必须被 proposal 声明"，`cq waiver` 提供带期限的
+> 豁免（到期自动翻红）。**默认关闭**：项目根放 `.specdrift.toml` 才启用，未配置的仓库行为
+> 逐项不变（CI 专项回归锁死）。
+> 👉 详见下方 [spec-drift 章节](#spec-driftv020--可选spec-驱动项目的防漂移门)。
+
 ## 它解决什么问题
 
 AI 编程助手让"能跑的代码"变得廉价，也让这类问题变得高频：
