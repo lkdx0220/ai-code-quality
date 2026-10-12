@@ -75,10 +75,18 @@ def _entry_sig(item: dict[str, str]) -> tuple[str, str, str, str] | None:
     )
 
 
+def finding_entries(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    """账本里属于 finding 豁免的条目（kind 默认 finding；spec_waiver 等其他 kind 不算）。
+
+    suppressions.json 同时承载 finding 豁免与 spec-drift 的 waiver（kind=spec_waiver），
+    两套逻辑互不读取对方条目——这是账本复用的向后兼容红线。"""
+    return [x for x in items if x.get("kind", "finding") == "finding"]
+
+
 def suppression_ids(project_root: Path) -> tuple[set[str], set[tuple[str, str, str, str]]]:
     """扫描时用的两组匹配键：（精确 id 集, 签名集）。"""
-    items = load(project_root)
-    ids = {str(x.get("id")) for x in items}
+    items = finding_entries(load(project_root))
+    ids = {str(x.get("id")) for x in items if x.get("id")}
     sigs = {s for x in items if (s := _entry_sig(x)) is not None}
     return ids, sigs
 
@@ -153,15 +161,17 @@ def add(
 def reapply(project_root: Path, run_findings: list[dict[str, object]]) -> dict[str, int]:
     """把存量豁免条目按签名重新对齐到最新 run：命中则刷新 id（旧版无签名条目只能按 id）。
 
-    返回 {matched, unmatched, refreshed}。unmatched 条目保留不动（可能确已修复）。"""
+    返回 {matched, unmatched, refreshed}。unmatched 条目保留不动（可能确已修复）。
+    只处理 finding 条目；spec_waiver 等其他 kind 原样保留（save 全量回写）。"""
     items = load(project_root)
+    work = finding_entries(items)  # 元素与 items 同引用：改 work 即改 items
     by_id = {str(f.get("id")): f for f in run_findings}
     by_sig: dict[tuple[str, str, str, str], list[dict[str, object]]] = {}
     for f in run_findings:
         by_sig.setdefault(_sig_of(f), []).append(f)
 
     matched = unmatched = refreshed = 0
-    for item in items:
+    for item in work:
         old_id = str(item.get("id"))
         hit: dict[str, object] | None = by_id.get(old_id)
         if hit is None:

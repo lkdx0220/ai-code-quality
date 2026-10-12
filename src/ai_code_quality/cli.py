@@ -136,6 +136,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="真正执行该批次的自动修复命令（用户显式批准的载体；仅对'自动修复'批次开放）",
     )
     p_fix.add_argument("--format", choices=["md", "json"], default="md")
+
+    # ---- spec-drift（一期：spec-gate / waiver；仅项目配置 .specdrift.toml 后生效）----
+    p_sg = sub.add_parser(
+        "spec-gate",
+        help="spec 防漂移门：检查本次变更的代码是否在活跃 proposal 中声明（需 .specdrift.toml）",
+    )
+    p_sg.add_argument("--project", default=".", help="项目路径（默认当前目录）")
+    p_sg.add_argument(
+        "--mode",
+        choices=["soft", "hard"],
+        default="soft",
+        help="soft=只警告（exit 0）；hard=漂移则退出码 1",
+    )
+    p_sg.add_argument(
+        "--paths",
+        default=None,
+        help="受 spec 管辖的路径（逗号分隔，覆盖 .specdrift.toml 的 code_paths）",
+    )
+
+    p_wv = sub.add_parser(
+        "waiver",
+        help="spec-drift 有期限豁免：decisions/ 生成 decision 文件并计入 suppressions.json 债务账本",
+    )
+    p_wv.add_argument("--project", default=".", help="项目路径（默认当前目录）")
+    p_wv.add_argument(
+        "--reason", required=True, help="豁免理由（必填，如'先写代码，spec 周五前补齐'）"
+    )
+    p_wv.add_argument("--ttl", required=True, help="期限（如 30m / 12h / 7d）")
+    p_wv.add_argument("--change", default="", help="关联的 change id（可选）")
     return parser
 
 
@@ -172,10 +201,52 @@ def main(argv: list[str] | None = None) -> int:
         return _run_suppress_command(args)
     if args.command == "fix":
         return _run_fix_command(args)
+    if args.command == "spec-gate":
+        return _run_spec_gate_command(args)
+    if args.command == "waiver":
+        return _run_waiver_command(args)
     if args.command != "scan":
         print(f"错误：未知子命令 {args.command}", file=sys.stderr)
         return 1
     return _run_scan_command(args)
+
+
+def _run_spec_gate_command(args: argparse.Namespace) -> int:
+    from .specdrift import SpecDriftError, render_spec_gate, run_spec_gate
+
+    project = Path(args.project)
+    if not project.is_dir():
+        print(f"错误：项目目录不存在: {project}", file=sys.stderr)
+        return 3
+    paths = [p.strip() for p in args.paths.split(",") if p.strip()] if args.paths else None
+    try:
+        res = run_spec_gate(project, mode=args.mode, paths_override=paths)
+    except SpecDriftError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    print(render_spec_gate(res))
+    return res.exit_code
+
+
+def _run_waiver_command(args: argparse.Namespace) -> int:
+    from .specdrift import SpecDriftError, create_waiver
+
+    project = Path(args.project)
+    if not project.is_dir():
+        print(f"错误：项目目录不存在: {project}", file=sys.stderr)
+        return 3
+    try:
+        path, entry = create_waiver(
+            project, reason=args.reason, ttl=args.ttl, change_id=args.change
+        )
+    except SpecDriftError as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+    print(f"waiver 已生成：{path}")
+    print(f"  截止：{entry['expires_at']}（过期后 spec-gate --mode=hard 视为漂移）")
+    print("  已计入债务账本：.cq/suppressions.json（kind=spec_waiver）")
+    print("  spec 补齐后建议删除该 decision 文件，或让它自然过期。")
+    return 0
 
 
 def _run_fix_command(args: argparse.Namespace) -> int:

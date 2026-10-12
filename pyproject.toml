@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-code-quality"
-version = "0.1.0"
+version = "0.2.0"
 description = "cq - 通用本地代码质量扫描 CLI：统一聚合 ruff/mypy/radon/vulture/pytest/import-linter/deepsec 的 findings"
 readme = "README.md"
 requires-python = ">=3.11"

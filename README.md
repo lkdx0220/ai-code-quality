@@ -327,6 +327,32 @@ finding schema（与交接方案 §6 一致）：
 - `tests/fixtures/demo-flask-api/`：故意埋了安全/类型/复杂度/死代码/格式/测试问题的 fixture 仓库，
   用于验收"六类问题一次全报出"。
 
+## spec-drift（v0.2.0 · 可选）：spec 驱动项目的防漂移门
+
+面向采用 spec 工作流（constitution → 现状规格 → 变更提案 → 实施）的项目，把"人记得维护 spec"
+升级为"自动强制"。**默认关闭**：项目根放 `.specdrift.toml` 才启用，未配置的仓库 `scan/gate`
+行为与旧版逐项一致（CI 有专项回归锁死）。
+
+```toml
+# .specdrift.toml（项目根）
+code_paths   = ["app/", "prompts/"]   # 受 spec 管辖的代码路径
+spec_root    = "openspec/specs"        # 现状规格根
+change_root  = "openspec/changes"      # 变更提案根（proposal.md 含 spec_ref）
+waiver_dir   = "decisions"             # 豁免归档目录
+soft_timestamp_check = true            # 时间戳只做软提示
+```
+
+```bash
+cq spec-gate --mode=hard              # 检查本次变更是否在活跃 proposal 中声明（hard=漂移则 exit 1）
+cq waiver --reason "先写代码，spec 周五前补齐" --ttl 48h   # 有期限豁免：decisions/ 生成文件 + 计入债务
+```
+
+- 判定：变更粒度 delta 校验（活跃 proposal 的 `spec_ref` 指向存在的 spec 且含
+  `ADDED/MODIFIED/REMOVED`，文本按词边界引用变更文件或显式目录形态 `app/`）；时间戳仅软提示。
+- waiver 过期后 `spec-gate --mode=hard` 视为漂移并标红；账本复用 `.cq/suppressions.json`
+  （条目带 `kind`，finding 与 waiver 互不干扰）。
+- 二期（规划）：`cq spec-rebuild`（启发式逆向对账）与 `cq promote`（决策晋升候选）。
+
 ## 路线图
 
 - ~~**Phase 1**~~ ✅ `cq scan` + `cq doctor`：8 adapter 统一报告、环境体检、安装引导。
@@ -334,4 +360,6 @@ finding schema（与交接方案 §6 一致）：
   新增 blocker/high 即失败、local_rating 近似评级、带理由豁免机制。
 - ~~**Phase 3**~~ ✅ `cq fix`（分批修复计划 + 显式 --apply）；DSH `SKILL.md`（已安装
   `~/.dsh/skills/ai-code-quality/`）+ Codex/Claude/Cursor 薄适配文件（见 `agent-adapters/`）。
-- **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review、可选 toolkit 插件/MCP。
+- ~~**v0.2.0 · spec-drift 一期**~~ ✅ `cq spec-gate` + `cq waiver`（外部需求单驱动，含兼容性红线回归）。
+- **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review、
+  spec-drift 二期（spec-rebuild 启发式对账 / promote 决策晋升）、可选 toolkit 插件/MCP。

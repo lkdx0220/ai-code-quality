@@ -47,6 +47,36 @@ jobs:
       - name: pytest
         run: python -m pytest tests -q --cov=ai_code_quality --cov-report=term
 
+  # 红线回归（需求单第四节 1/2）：未配置 .specdrift.toml 的仓库行为与旧版一致。
+  # 本仓库自身就是"无配置仓库"——spec-drift 相关命令必须完全旁路，scan 口径不变。
+  specdrift-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e .
+      - name: 无配置仓库上 spec-gate 旁路
+        run: |
+          test ! -f .specdrift.toml
+          OUT=$(cq spec-gate --mode=hard); RC=$?
+          echo "$OUT"
+          [ $RC -eq 0 ] && echo "$OUT" | grep -q "未启用"
+      - name: scan 的 adapter 集不含 spec 项
+        run: |
+          cq scan --project . --no-deepsec --adapters ruff-check > /dev/null
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          run = sorted(Path("audits").glob("*-full"))[-1]
+          summary = json.loads((run / "summary.json").read_text(encoding="utf-8"))
+          names = [t["name"] for t in summary["tools"]]
+          assert "spec-gate" not in names and "specdrift" not in names, names
+          assert not any("spec" in str(t.get("reason", "")).lower() for t in summary["tools"])
+          print("compat OK：scan 口径未被 spec-drift 污染，工具集 =", names)
+          EOF
+
   # 自举（dogfood）：cq 扫 cq 自己，守住我们给自己立的规矩——
   # 工具不许 error/timeout，活跃 findings 不许有 blocker/high。
   # deepsec 在 CI 里跳过（外部依赖），覆盖率中等的债务如实存在，不进本断言。
