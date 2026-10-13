@@ -365,6 +365,7 @@ cq spec-gate --mode=hard --base origin/main        # 比对 <ref>...HEAD 的受�
 cq spec-gate --mode=hard --range main...feature    # 显式区间（PR 场景）
 ```
 
+- 区间感知（v0.5.0）：`--base/--range` 检查时，本次区间内被**归档**的变更（含 git mv）仍参与声明匹配——支持"实施→归档→推送"流程，且区间外旧归档不会永久白名单；无参时行为不变。
 - 判定：变更粒度 delta 校验（活跃 proposal 的 `spec_ref` 指向存在的 spec 且含
   `ADDED/MODIFIED/REMOVED`，文本按词边界引用变更文件或显式目录形态 `app/`）；时间戳仅软提示。
 - waiver 过期后 `spec-gate --mode=hard` 视为漂移并标红；账本复用 `.cq/suppressions.json`
