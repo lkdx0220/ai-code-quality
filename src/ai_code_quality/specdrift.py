@@ -392,35 +392,50 @@ def run_spec_gate(
     res = SpecGateResult(
         mode=mode, configured=True, changed_files=changed_in_scope, expired_waivers=expired
     )
-    for f in changed_in_scope:
-        ch = _declared(f, viable)
-        if ch is not None:
-            res.covered_by[f] = ch.name
-        elif actives and not waived_by_expiry:
-            res.waived.append(f)
-        else:
-            res.drift.append(f)
-
-    # 时间戳软提示：变更文件晚于全部 spec 文件的最大 mtime → 提示（不构成失败）
-    if cfg.soft_timestamp_check and changed_in_scope:
-        spec_files = (
-            list((root / cfg.spec_root).rglob("*.md")) if (root / cfg.spec_root).is_dir() else []
-        )
-        if spec_files:
-            spec_newest = max(p.stat().st_mtime for p in spec_files)
-            late = [
-                f
-                for f in changed_in_scope
-                if (root / f).exists() and (root / f).stat().st_mtime > spec_newest
-            ]
-            if late:
-                res.soft_hints.append(
-                    f"软提示：{len(late)} 个变更文件晚于 spec 最新修改时间（仅提示，不构成失败）"
-                )
+    _classify(res, changed_in_scope, viable, actives and not waived_by_expiry)
+    if cfg.soft_timestamp_check:
+        _timestamp_hint(root, cfg, changed_in_scope, res.soft_hints)
 
     if res.drift and mode == "hard":
         res.exit_code = 1
     return res
+
+
+def _classify(
+    res: SpecGateResult,
+    changed_in_scope: list[str],
+    viable: list[ActiveChange],
+    waiver_active: bool,
+) -> None:
+    """逐文件分类：被 proposal 声明 → covered；waiver 生效 → waived；否则 drift。"""
+    for f in changed_in_scope:
+        ch = _declared(f, viable)
+        if ch is not None:
+            res.covered_by[f] = ch.name
+        elif waiver_active:
+            res.waived.append(f)
+        else:
+            res.drift.append(f)
+
+
+def _timestamp_hint(
+    root: Path, cfg: SpecDriftConfig, changed_in_scope: list[str], hints: list[str]
+) -> None:
+    """时间戳软提示：变更文件晚于全部 spec 文件的最大 mtime → 提示（不构成失败）。"""
+    if not changed_in_scope:
+        return
+    spec_dir = root / cfg.spec_root
+    spec_files = list(spec_dir.rglob("*.md")) if spec_dir.is_dir() else []
+    if not spec_files:
+        return
+    spec_newest = max(p.stat().st_mtime for p in spec_files)
+    late = [
+        f
+        for f in changed_in_scope
+        if (root / f).exists() and (root / f).stat().st_mtime > spec_newest
+    ]
+    if late:
+        hints.append(f"软提示：{len(late)} 个变更文件晚于 spec 最新修改时间（仅提示，不构成失败）")
 
 
 def render_spec_gate(res: SpecGateResult) -> str:
