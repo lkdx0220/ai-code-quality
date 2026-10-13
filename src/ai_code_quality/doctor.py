@@ -79,6 +79,11 @@ def _check_pymod(
 ) -> ToolCheck:
     r = probe([py, "-m", module, "--version"], timeout=30)
     ok = (not r.not_found) and r.returncode == 0
+    detail = "" if ok else _first_line(r.stderr) or "python -m 探测失败"
+    if not ok and r.returncode is not None and r.returncode < 0:
+        # 负退出码 = STATUS_*（如 -1073741502 = 0xC0000142 DLL 初始化失败），
+        # 多为安全软件/注入类服务掐断进程初始化，与工具本身无关
+        detail = f"{detail}（异常退出码 {r.returncode}，常见于安全软件或 DLL 注入服务拦截）"
     return ToolCheck(
         name=name,
         tool=tool,
@@ -87,7 +92,7 @@ def _check_pymod(
         install=install,
         note=note,
         optional=optional,
-        detail="" if ok else _first_line(r.stderr) or "python -m 探测失败",
+        detail=detail,
     )
 
 
