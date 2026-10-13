@@ -392,7 +392,8 @@ def run_spec_gate(
     res = SpecGateResult(
         mode=mode, configured=True, changed_files=changed_in_scope, expired_waivers=expired
     )
-    _classify(res, changed_in_scope, viable, actives and not waived_by_expiry)
+    waiver_active = bool(actives) and not waived_by_expiry
+    _classify(res, changed_in_scope, viable, waiver_active)
     if cfg.soft_timestamp_check:
         _timestamp_hint(root, cfg, changed_in_scope, res.soft_hints)
 
