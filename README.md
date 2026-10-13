@@ -34,6 +34,19 @@ AI 编程助手让"能跑的代码"变得廉价，也让这类问题变得高频
 - **语义与执行交给 AI Agent**：读报告定批次、动手修（每一步经你批准）、运行时验证行为——
   这些是确定性工具做不了、而 Agent 真正擅长的事。
 
+## 语言支持边界（重要）
+
+**当前版本只支持 Python 仓库。** 8 个检测工具里 6 个是 Python 生态原生工具
+（ruff/mypy/radon/vulture/pytest-cov/import-linter），扫描目标发现、`cq fix` 的自动修复、
+`spec-rebuild` 的符号提取（AST）也都基于 Python 假设。Java/Go/TS 等语言目前
+`cq scan` 会因找不到 `.py` 目标而得到空结果（spec-gate/waiver/promote 除外，见下）。
+
+**语言无关、任何仓库都能用的部分**：`spec-gate` / `waiver` / `promote`（只依赖 git 与
+markdown 文本，与代码语言无关）、账本与豁免留痕、报告与产物链、多 Agent 适配层。
+
+多语言支持（Java：Checkstyle/SpotBugs/PMD/JUnit+JaCoCo/ArchUnit 等）在路线图上，
+体量相当于重做一遍 adapter 层，按真实需求排期。
+
 三者各干各的，谁也不替谁编造结论。
 
 ## 它如何运作
@@ -387,3 +400,5 @@ cq spec-gate --mode=hard --range main...feature    # 显式区间（PR 场景）
 - ~~**v0.2.0 · spec-drift 一期**~~ ✅ `cq spec-gate` + `cq waiver`（外部需求单驱动，含兼容性红线回归）。
 - **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review、
   可选 toolkit 插件/MCP。
+- **多语言（未排期）**：Java（Checkstyle/SpotBugs/PMD/JUnit+JaCoCo/ArchUnit adapter 集 + 语言探测
+  + Java 符号提取）等，按真实需求立项；spec-gate/waiver/promote 已语言无关可直接用。
