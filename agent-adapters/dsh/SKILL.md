@@ -72,6 +72,12 @@ description: "INVOKE THIS SKILL when the user asks to 审查代码, 代码质量
 cq 的能力来自 8 个外部工具，不一定已安装。`cq doctor` 会告诉你缺什么、装到哪。
 安装知识只在 doctor 一处维护：不要凭记忆拼安装命令，一律以 doctor 输出为准。
 
+**cq 本身启动失败先分流**（如报 `uv trampoline failed to canonicalize script path`）：
+这是安装启动器层故障，不是"8 个工具缺失"，更不要去重装底层工具。先用
+`PYTHONPATH=<源码>/src python -m ai_code_quality.cli --help` 验证应用层；修复方式是
+**非 editable 重装**（`uv tool install .`），受限沙箱可能需要换非受限终端。详见 README
+「启动入口故障」。
+
 **解释器陷阱（新机器必踩，先看这段再决定装不装）**：cq 装在 uv tool/pipx 隔离 venv 时，
 `cq doctor` 默认只探 cq 自带解释器——系统 Python 里已装好的工具链它一开始看不见。
 doctor/scan 已内置兜底：默认解释器缺核心工具时自动改用 PATH 上工具链全齐的系统 Python，

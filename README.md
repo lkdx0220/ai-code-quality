@@ -233,19 +233,37 @@ pytest tests --basetemp="<可写目录>/pt" -p no:cacheprovider  # 注意：base
 ## 安装与运行
 
 ```bash
-# 方式一：直接从源码跑（开发态）
-cd ai-code-quality
+# 方式一：装到 PATH（推荐，供任何 Agent 直接调 cq）——非 editable，源码复制进 venv
+uv tool install git+https://github.com/lkdx0220/ai-code-quality-skill   # 发布用户
+uv tool install .                                  # 本地源码（构建快照，改码后需 --force 重装）
+pipx install .                                     # 或 pipx
+
+# 方式二：开发态（改码即生效）
 PYTHONPATH=src python -m ai_code_quality scan --project <目标仓库>
+# 或 uv tool install --editable .（见下方启动故障警告）
 
-# 方式二：装到 PATH（推荐，供任何 Agent 直接调 cq）
-uv tool install --editable .
-#   注意：隔离 venv 里没有 ruff/mypy 等工具时，用 CQ_PYTHON 指到装了工具的解释器：
+# 隔离 venv 里没有 ruff/mypy 等工具时，用 CQ_PYTHON 指到装了工具的解释器：
 #   set CQ_PYTHON=C:/Python313/python.exe
-# 或 pipx install . / pip install -e .
-
-# PowerShell 里（文件产物一律 UTF-8）
-python -m ai_code_quality scan --project . --format md
 ```
+
+### ⚠️ 启动入口故障：`uv trampoline failed to canonicalize script path`
+
+`--editable` 安装会让 uv 的启动器（trampoline）依赖**源码目录路径**。已知组合
+"editable + 非 ASCII 源码路径（如 `skills开发`）+ 受限执行环境（沙箱掩蔽工作区外路径）"
+会让 `cq`/`cq --help` 在 trampoline 阶段直接失败（进不了应用；uv 的部分子命令还会报
+`os error 183`）。Codex/受限沙箱环境实测复现，干净终端可能正常——更具迷惑性。
+
+**处理顺序（先分流，不要重装底层工具）**：
+
+1. 判层：`python -c "import sys; print('ok')"` 正常、而 `cq --help` 报 trampoline 错误
+   → 故障在**安装启动器层**，与应用无关。`PYTHONPATH=src python -m ai_code_quality.cli --help`
+   能出帮助 → 进一步确认应用层完好。
+2. 解：`uv tool uninstall ai-code-quality && uv tool install .`（**非 editable**，源码
+   复制进 venv，trampoline 只引用 venv 内路径，沙箱/中文路径均不受影响）。
+3. 若重装后仍失败且你处于沙箱环境 → 属沙箱对 uv 路径的掩蔽（可能伴随 `uv tool list`
+   报 `os error 183`），换非受限终端执行，或改用方式二回退；并欢迎到本仓库 issue 反馈
+   （附 uv --version、cq.exe 路径、错误全文、是否 editable 安装、源码路径是否含非 ASCII）。
+4. **不要**因这个错误去重装 ruff/mypy 等底层工具——它们与此无关。
 
 ## 用法
 
