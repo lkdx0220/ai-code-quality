@@ -190,12 +190,13 @@ def _deepsec_source_version(home: Path) -> str:
 # 但系统 Python 里往往全有。默认解释器缺核心工具且未被显式指定时，
 # 自动找一台全齐的系统解释器顶上，避免"看着像缺 5 个工具、诱导重复安装"的陷阱。
 REQUIRED_TOOLS = ("ruff", "mypy", "radon", "vulture", "pytest")
-_SENTINEL = "ruff"
 
 
-def _has_sentinel(py: str) -> bool:
-    """单次哨兵探测（约 0.2s）：ruff 在则视为该解释器已配置过工具链。"""
-    return probe([py, "-m", _SENTINEL, "--version"], timeout=20).returncode == 0
+def required_missing(py: str) -> set[str]:
+    """供 scan 等外部使用的缺失集合查询（5 个核心工具模块名）。"""
+    return {
+        m for m in REQUIRED_TOOLS if probe([py, "-m", m, "--version"], timeout=20).returncode != 0
+    }
 
 
 def _probe_required(py: str) -> set[str]:
@@ -230,30 +231,27 @@ def _candidate_pythons() -> list[str]:
 def resolve_tool_python(
     cfg: Config,
     *,
-    probe_required: Callable[[str], set[str]] | None = None,
+    missing: set[str],
     candidates: Callable[[], list[str]] | None = None,
+    probe_required: Callable[[str], set[str]] | None = None,
 ) -> tuple[str, str]:
-    """返回（应使用的解释器, 说明）。
+    """返回（应使用的解释器, 说明）。missing = 当前解释器缺失的核心工具模块名集合。
 
-    哨兵探测（ruff）确认默认解释器缺核心工具、且该解释器未被用户显式指定
-    （env/CLI/cq.toml 指过的都不动）时，依次尝试系统解释器候选，
-    找到 5 个核心工具全齐的就换过去；说明非空 = 发生了自动切换（含固化建议）。
-    健康环境只多付一次哨兵探测（约 0.2s）。
-    """
+    仅当默认解释器（== sys.executable）缺工具时才尝试候选；显式指定的解释器
+    （env/CLI/cq.toml 指过）不擅自切换。候选需**补齐全部缺失**才切换；
+    说明非空 = 发生了自动切换（含固化建议）。"""
     import sys as _sys
 
     _probe = probe_required or _probe_required
     primary = cfg.python
-    if _SENTINEL in _probe(primary):
+    if not missing:
         return primary, ""
-    explicit = Path(primary).resolve() != Path(_sys.executable).resolve()
-    if explicit:
+    if Path(primary).resolve() != Path(_sys.executable).resolve():
         return primary, ""  # 用户显式指定的解释器：不擅自换，缺失由 doctor/scan 如实报告
-    missing = set(REQUIRED_TOOLS) - _probe(primary)
     for cand in (candidates or _candidate_pythons)():
         if str(Path(cand).resolve()).lower() == str(Path(primary).resolve()).lower():
             continue
-        if set(REQUIRED_TOOLS) <= _probe(cand):
+        if missing <= _probe(cand):
             note = (
                 f"cq 自带解释器缺 {'/'.join(sorted(missing))}，已自动改用系统解释器；"
                 f"固化方式（任选其一）：设环境变量 CQ_PYTHON={cand}、"
@@ -263,17 +261,7 @@ def resolve_tool_python(
     return primary, ""
 
 
-def run_doctor(
-    cfg: Config, probe_fn: Callable[[], list[ToolCheck]] | None = None
-) -> tuple[list[ToolCheck], str]:
-    """probe_fn 供测试注入；默认真实探测。返回（检查结果, 解释器切换说明）。"""
-    if probe_fn is not None:
-        return probe_fn(), ""
-    note: str = ""
-    if not _has_sentinel(cfg.python):
-        chosen, note = resolve_tool_python(cfg)
-        if note:
-            cfg.python = chosen
+def _build_checks(cfg: Config) -> list[ToolCheck]:
     py = cfg.python
     checks = [
         _check_pymod(
@@ -350,6 +338,27 @@ def run_doctor(
         )
     )
     checks.append(_check_deepsec(cfg))
+    return checks
+
+
+def run_doctor(
+    cfg: Config, probe_fn: Callable[[], list[ToolCheck]] | None = None
+) -> tuple[list[ToolCheck], str]:
+    """probe_fn 供测试注入；默认真实探测。返回（检查结果, 解释器切换说明）。
+
+    解释器兜底：默认解释器缺核心工具且来源为 default 时，按**实际缺失集合**尝试
+    系统候选（而非单哨兵——venv 里恰好装了哨兵工具会骗过它）；候选未全齐则
+    保留原结果（如实报缺），不会静默切换。"""
+    if probe_fn is not None:
+        return probe_fn(), ""
+    checks = _build_checks(cfg)
+    note: str = ""
+    missing = {c.tool for c in checks if not c.available and not c.optional}
+    if missing and cfg.python_source == "default":
+        chosen, note = resolve_tool_python(cfg, missing=missing)
+        if chosen != cfg.python and note:
+            cfg.python = chosen
+            checks = _build_checks(cfg)
     return checks, note
 
 

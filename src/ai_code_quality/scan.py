@@ -60,11 +60,12 @@ def run_scan(
     )
 
     # 解释器兜底：cq 装在 uv tool 隔离 venv 且未显式配置 python 时，
-    # 自带解释器里没有外部工具——自动改用工具链全齐的系统解释器（说明进报告备注）
-    from .doctor import _has_sentinel, resolve_tool_python
+    # 按实际缺失的核心工具集合，自动改用工具链全齐的系统解释器（说明进报告备注）
+    from .doctor import required_missing, resolve_tool_python
 
-    if not _has_sentinel(cfg.python):
-        chosen, python_note = resolve_tool_python(cfg)
+    missing = required_missing(cfg.python)
+    if missing and cfg.python_source == "default":
+        chosen, python_note = resolve_tool_python(cfg, missing=missing)
         if python_note:
             cfg.python = chosen
             targets.notes.append(python_note)

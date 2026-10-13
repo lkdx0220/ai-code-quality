@@ -1,7 +1,11 @@
+"""解释器兜底：按实际缺失集合切换（显式指定永不自动切换）。"""
+
 import sys
 
 from ai_code_quality.config import Config
-from ai_code_quality.doctor import REQUIRED_TOOLS, resolve_tool_python
+from ai_code_quality.doctor import resolve_tool_python
+
+ALL = {"ruff", "mypy", "radon", "vulture", "pytest"}
 
 
 def _cfg(py: str) -> Config:
@@ -10,78 +14,66 @@ def _cfg(py: str) -> Config:
     return c
 
 
-def test_primary_has_sentinel_no_fallback():
-    # 默认解释器哨兵（ruff）可用 → 原样返回，不触发候选探测
+def test_no_missing_no_fallback():
     calls = []
 
-    def fake_probe(py):
+    def probe(py):
         calls.append(py)
-        return {"ruff"}
+        return ALL
 
-    py, note = resolve_tool_python(_cfg("PY_DEFAULT"), probe_required=fake_probe, candidates=list)
-    assert py == "PY_DEFAULT" and note == ""
-    assert calls == ["PY_DEFAULT"]
+    py, note = resolve_tool_python(
+        _cfg("PY_DEFAULT"), missing=set(), probe_required=probe, candidates=lambda: ["X"]
+    )
+    assert py == "PY_DEFAULT" and note == "" and calls == []
 
 
 def test_fallback_switches_to_complete_candidate():
-    # 默认解释器（=sys.executable，即未显式指定）缺全部工具 → 换到全齐的系统解释器
-    def fake_probe(py):
-        return set(REQUIRED_TOOLS) if py == "PY_SYSTEM" else set()
+    def probe(py):
+        return ALL if py == "PY_SYSTEM" else set()
 
     py, note = resolve_tool_python(
         _cfg(sys.executable),
-        probe_required=fake_probe,
+        missing=ALL - {"pytest"},
+        probe_required=probe,
         candidates=lambda: ["PY_BAD", "PY_SYSTEM"],
     )
     assert py == "PY_SYSTEM"
-    assert "CQ_PYTHON=PY_SYSTEM" in note
-    assert "已自动改用系统解释器" in note
+    assert "CQ_PYTHON=PY_SYSTEM" in note and "已自动改用系统解释器" in note
 
 
 def test_explicit_python_never_switched():
-    # 用户显式指定的解释器（≠sys.executable）即使缺工具也不擅自换
-    def fake_probe(py):
+    calls = []
+
+    def probe(py):
         return set()
 
-    called = []
-
-    def fake_candidates():
-        called.append(1)
-        return ["PY_SYSTEM"]
-
+    cfg = _cfg("PY_EXPLICIT")
     py, note = resolve_tool_python(
-        _cfg("PY_EXPLICIT"),
-        probe_required=fake_probe,
-        candidates=fake_candidates,
+        cfg, missing=ALL, probe_required=probe, candidates=lambda: (calls.append(1), ["X"])[1]
     )
-    assert py == "PY_EXPLICIT" and note == ""
-    assert called == []  # 显式路径连候选探测都不做
+    assert py == "PY_EXPLICIT" and note == "" and calls == []
 
 
 def test_no_complete_candidate_keeps_primary():
-    def fake_probe(py):
+    def probe(py):
         return {"ruff", "mypy"} if py == "PY_PARTIAL" else set()
 
     py, note = resolve_tool_python(
         _cfg(sys.executable),
-        probe_required=fake_probe,
+        missing={"mypy", "radon", "vulture"},
+        probe_required=probe,
         candidates=lambda: ["PY_PARTIAL", "PY_EMPTY"],
     )
     assert py == sys.executable and note == ""
 
 
-def test_candidate_same_as_primary_skipped(monkeypatch):
-    # 同一解释器（仅大小写差异）不重复探测。用相对名而不是 Windows 风格绝对路径：
-    # "C:/x" 与 "c:\\x" 只有在 Windows 上 resolve 后才相等，Linux 上是两个不同路径
-    # （CI 在 ubuntu 上跑，曾因此误判为"未跳过"）。
+def test_candidate_same_as_primary_skipped():
     probed = []
 
-    def fake_probe(py):
+    def probe(py):
         probed.append(py)
         return set()
 
-    cfg = Config()
-    cfg.python = "PyMain"
-    monkeypatch.setattr(sys, "executable", cfg.python)  # 视为默认解释器
-    resolve_tool_python(cfg, probe_required=fake_probe, candidates=lambda: ["pymain"])
-    assert probed.count("pymain") == 0  # 同一解释器不再探测
+    cfg = _cfg("PyMain")
+    resolve_tool_python(cfg, missing=ALL, probe_required=probe, candidates=lambda: ["pymain"])
+    assert probed.count("pymain") == 0  # 同一解释器（大小写差异）不再探测

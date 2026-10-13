@@ -259,6 +259,12 @@ PYTHONPATH=src python -m ai_code_quality scan --project <目标仓库>
 会让 `cq`/`cq --help` 在 trampoline 阶段直接失败（进不了应用；uv 的部分子命令还会报
 `os error 183`）。Codex/受限沙箱环境实测复现，干净终端可能正常——更具迷惑性。
 
+**机器级环境变量注记**：`CQ_PYTHON` 这类变量是**隐式全局状态**，建议各环境自管
+（需要扫描能力的会话显式设置；不设时 cq 回落默认解释器，缺工具会**明确报缺**而非静默用错）。
+若曾设置后想移除：删除用户级 `CQ_PYTHON`（PowerShell：
+`Remove-ItemProperty HKCU:\Environment -Name CQ_PYTHON`），恢复命令：
+`setx CQ_PYTHON "<你的Python313路径>"`。维护者可另建不入库的本地包装脚本一键注入。
+
 **解释器三层关系（doctor 的 `python` 字段从哪来）**：
 `uv receipt/venv 解释器`（装 cq 时 `--python` 指定的，只有 cq 自己）→ 可能被机器级
 `CQ_PYTHON` 环境变量**抢先覆盖**。优先级：`--python` > `CQ_PYTHON` > `cq.toml` > 默认。
