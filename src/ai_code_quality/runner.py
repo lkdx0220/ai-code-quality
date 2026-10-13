@@ -67,9 +67,15 @@ def run_cmd(
         return ProcResult(
             cmd=cmd, returncode=None, timed_out=True, duration_s=time.monotonic() - start
         )
-    except (FileNotFoundError, OSError):
+    except (FileNotFoundError, OSError) as e:
+        # 进程根本没能启动（不存在/被拒绝/被沙箱拦截）：把真实系统错误带回去，
+        # 否则上层只会看到空 stderr 的"探测失败"，无法区分缺模块与启动被拦
         return ProcResult(
-            cmd=cmd, returncode=None, not_found=True, duration_s=time.monotonic() - start
+            cmd=cmd,
+            returncode=None,
+            not_found=True,
+            stderr=f"[spawn-failed] {type(e).__name__}: {e}",
+            duration_s=time.monotonic() - start,
         )
 
 

@@ -49,6 +49,8 @@ class Config:
     # 扫描目标是否遵循根 .gitignore（轻量子集：目录名/通配/相对路径，不支持 ! 否定）。
     # 与 ruff/pytest 等工具的忽略语义对齐；关掉则连 .gitignore 里的路径也扫。
     respect_gitignore: bool = True
+    # 解释器来源（doctor 展示用）：default | config | env | cli
+    python_source: str = "default"
 
     def timeout_for(self, adapter_name: str) -> int:
         if adapter_name in self.timeout_overrides:
@@ -72,7 +74,10 @@ class Config:
                     if isinstance(tool_section, dict):
                         cfg = _apply(cfg, tool_section)
                     # 顶层键也接受（tool. 前缀省略的写法）
+                    before = cfg.python
                     cfg = _apply(cfg, {k: v for k, v in data.items() if k != "tool"})
+                    if cfg.python != before:
+                        cfg.python_source = "config"
                 break
         # 2) 环境变量
         env: dict[str, object] = {}
@@ -87,15 +92,22 @@ class Config:
                 env["timeout_default"] = int(os.environ[ENV_KEYS["timeout"]])
             except ValueError:
                 pass
+        before = cfg.python
         cfg = _apply(cfg, env)
+        if cfg.python != before:
+            cfg.python_source = "env"
         # 3) CLI 参数（最高优先级）
         if cli_overrides:
+            before = cfg.python
             cfg = _apply(cfg, cli_overrides)
+            if cfg.python != before:
+                cfg.python_source = "cli"
         return cfg
 
     def snapshot(self) -> dict[str, object]:
         return {
             "python": self.python,
+            "python_source": self.python_source,
             "deepsec_home": self.deepsec_home,
             "deepsec_python": self.deepsec_python,
             "timeout_default": self.timeout_default,

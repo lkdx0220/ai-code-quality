@@ -353,22 +353,53 @@ def run_doctor(
     return checks, note
 
 
-def doctor_summary(checks: list[ToolCheck]) -> dict[str, object]:
+def doctor_summary(
+    checks: list[ToolCheck],
+    *,
+    python_source: str = "default",
+) -> dict[str, object]:
     missing_required = [c.name for c in checks if not c.available and not c.optional]
     missing_optional = [c.name for c in checks if not c.available and c.optional]
-    return {
+    summary = {
         "tools": [c.to_dict() for c in checks],
+        "python_source": python_source,
         "total": len(checks),
         "available": sum(1 for c in checks if c.available),
         "missing_required": missing_required,
         "missing_optional": missing_optional,
         "all_available": not missing_required and not missing_optional,
     }
+    # 疑似执行拦截：≥2 个核心工具的 detail 是 spawn 失败 → 全局提示，避免误判要重装工具
+    spawn_blocked = [
+        c
+        for c in checks
+        if not c.available
+        and "[spawn-failed]" in (c.detail or "")
+        and any(k in (c.detail or "") for k in ("Permission", "拒绝访问", "Access is denied"))
+    ]
+    if len(spawn_blocked) >= 2:
+        summary["spawn_blocked_hint"] = (
+            f"{len(spawn_blocked)} 个工具的探测进程无法启动（权限被拒/沙箱拦截）："
+            "这不是工具缺失。用 --python 显式指向可运行的解释器（如工具所在 venv 的 python.exe）"
+            "再验证；或在安全软件中放行该解释器。"
+        )
+    return summary
+
+
+_SOURCE_LABEL = {
+    "default": "默认（cq 自身运行解释器）",
+    "config": "cq.toml 配置",
+    "env": "环境变量 CQ_PYTHON",
+    "cli": "命令行 --python",
+}
 
 
 def render_console(py: str, summary: dict[str, object]) -> str:
     lines: list[str] = ["cq doctor · 环境体检", ""]
-    lines.append(f"工具解释器：{py}（CQ_PYTHON / --python 可覆盖）")
+    src = str(summary.get("python_source", "default"))
+    lines.append(
+        f"工具解释器：{py}（来源：{_SOURCE_LABEL.get(src, src)}；CQ_PYTHON / --python 可覆盖）"
+    )
     lines.append("")
     tools = cast("list[dict[str, object]]", summary["tools"])
     for t in tools:
