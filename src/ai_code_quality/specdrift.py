@@ -40,6 +40,8 @@ class SpecDriftConfig:
     change_root: str = "openspec/changes"
     waiver_dir: str = "decisions"
     soft_timestamp_check: bool = True
+    promote_window: str = "30d"  # promote 候选统计窗口（parse_ttl 格式）
+    promote_threshold: int = 3  # 窗口内出现次数 ≥ 此值才出候选
 
 
 def load_specdrift_config(project_root: Path) -> SpecDriftConfig | None:
@@ -61,6 +63,8 @@ def load_specdrift_config(project_root: Path) -> SpecDriftConfig | None:
     cfg.change_root = str(section.get("change_root", cfg.change_root))
     cfg.waiver_dir = str(section.get("waiver_dir", cfg.waiver_dir))
     cfg.soft_timestamp_check = bool(section.get("soft_timestamp_check", True))
+    cfg.promote_window = str(section.get("promote_window", cfg.promote_window))
+    cfg.promote_threshold = int(section.get("promote_threshold", cfg.promote_threshold))
     return cfg
 
 
@@ -201,7 +205,7 @@ def active_waivers(
     """读 suppressions.json 里的 spec_waiver 条目 → (生效中, 已过期)。"""
     from . import suppress as suppress_mod
 
-    now = now or datetime.now().astimezone()
+    now = _aware(now) if now is not None else datetime.now().astimezone()
     items = suppress_mod.load(project_root)
     active: list[dict] = []
     expired: list[dict] = []
@@ -233,7 +237,7 @@ def create_waiver(
     if not reason.strip():
         raise SpecDriftError("必须写 --reason")
     cfg = cfg or (load_specdrift_config(project_root) or SpecDriftConfig())
-    now = now or datetime.now().astimezone()
+    now = _aware(now) if now is not None else datetime.now().astimezone()
     deadline = now + parse_ttl(ttl)
     day = now.strftime("%Y-%m-%d")
     slug = slugify(reason)
@@ -327,7 +331,7 @@ def run_spec_gate(
     changed_in_scope = [f for f in files if _under_any(f, code_paths)]
     changes = load_active_changes(root, cfg)
     viable = [c for c in changes if c.spec_exists and c.has_delta]
-    now = now or datetime.now().astimezone()
+    now = _aware(now) if now is not None else datetime.now().astimezone()
     actives, expired = active_waivers(root, now)
     waived_by_expiry = len(expired) > 0
 
@@ -393,3 +397,8 @@ def render_spec_gate(res: SpecGateResult) -> str:
             "（soft 模式仅警告；先写代码时可用 cq waiver --reason=… --ttl=24h 申请期限豁免）"
         )
     return "\n".join(lines)
+
+
+def _aware(dt: datetime) -> datetime:
+    """naive datetime 按本地时区补全（测试常传 naive；与账本 ISO 的 aware 统一）。"""
+    return dt.astimezone() if dt.tzinfo is None else dt

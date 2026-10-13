@@ -165,6 +165,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_wv.add_argument("--ttl", required=True, help="期限（如 30m / 12h / 7d）")
     p_wv.add_argument("--change", default="", help="关联的 change id（可选）")
+
+    # ---- spec-drift（二期：spec-rebuild / promote；只读报告与候选，apply 需显式批准）----
+    p_rb = sub.add_parser(
+        "spec-rebuild",
+        help="启发式逆向对账：代码符号 vs spec 文本的线索清单（需 .specdrift.toml）；--draft 只读",
+    )
+    p_rb.add_argument("--project", default=".", help="项目路径（默认当前目录）")
+    p_rb.add_argument(
+        "--from",
+        dest="from_src",
+        choices=["code"],
+        default="code",
+        help="对账方向（v1 仅 code：以代码为基准）",
+    )
+    mode = p_rb.add_mutually_exclusive_group()
+    mode.add_argument("--draft", action="store_true", default=True, help="只生成报告不写入（默认）")
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="写入骨架 patch（带 TODO 的章节模板）并清掉过期的 spec 债",
+    )
+    p_rb.add_argument("--json", action="store_true", help="以 JSON 输出报告")
+
+    p_pm = sub.add_parser(
+        "promote",
+        help="决策晋升候选：decisions/ 中反复出现的同类决策 → constitution 草稿（只输出，永不写文件）",
+    )
+    p_pm.add_argument("--project", default=".", help="项目路径（默认当前目录）")
+    p_pm.add_argument(
+        "--id", default=None, help="指定某条 decision 的标识（文件名或 slug），输出它的晋升草稿"
+    )
     return parser
 
 
@@ -205,6 +236,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_spec_gate_command(args)
     if args.command == "waiver":
         return _run_waiver_command(args)
+    if args.command == "spec-rebuild":
+        return _run_spec_rebuild_command(args)
+    if args.command == "promote":
+        return _run_promote_command(args)
     if args.command != "scan":
         print(f"错误：未知子命令 {args.command}", file=sys.stderr)
         return 1
@@ -246,6 +281,156 @@ def _run_waiver_command(args: argparse.Namespace) -> int:
     print(f"  截止：{entry['expires_at']}（过期后 spec-gate --mode=hard 视为漂移）")
     print("  已计入债务账本：.cq/suppressions.json（kind=spec_waiver）")
     print("  spec 补齐后建议删除该 decision 文件，或让它自然过期。")
+    return 0
+
+
+def _render_rebuild_md(res: object, skeleton: str | None = None) -> str:
+    from .specrebuild import RebuildResult
+
+    assert isinstance(res, RebuildResult)
+    lines: list[str] = ["# spec-drift 对账报告（启发式 · 线索清单，非真理）", ""]
+    if not res.configured:
+        return "\n".join(res.notes)
+    for n in res.notes:
+        lines.append(f"> {n}")
+    lines.append("> 置信度：class/function=高，module=中，spec 标题反向=低")
+    lines.append("")
+    lines.append(f"## 代码有、spec 无（{len(res.code_missing)}）")
+    lines.append("")
+    if res.code_missing:
+        lines.append("| 符号 | 类型 | 位置 | 置信度 |")
+        lines.append("|---|---|---|---|")
+        for s in res.code_missing:
+            lines.append(f"| {s.name} | {s.kind} | {s.file}:{s.line} | {s.confidence} |")
+    else:
+        lines.append("（无）")
+    lines.append("")
+    lines.append(f"## spec 有、代码无（{len(res.spec_missing)}，低置信度）")
+    lines.append("")
+    if res.spec_missing:
+        lines.append("| spec 章节 | 文件 |")
+        lines.append("|---|---|")
+        for f, h in res.spec_missing:
+            lines.append(f"| {h} | {f} |")
+    else:
+        lines.append("（无）")
+    lines.append("")
+    if res.broken_files:
+        lines.append(f"## 解析失败文件（{len(res.broken_files)}，已跳过）")
+        lines.append("")
+        lines.append("、".join(res.broken_files))
+        lines.append("")
+    lines.append(
+        f"覆盖：{res.covered_count} / {res.covered_count + len(res.code_missing)} 个符号在 spec 中有对应"
+    )
+    lines.append("")
+    if skeleton is not None:
+        lines.append("---")
+        lines.append("")
+        lines.append("## 建议 patch（骨架 · review 后用 `cq spec-rebuild --apply` 落盘）")
+        lines.append("")
+        lines.append(skeleton)
+    return "\n".join(lines)
+
+
+def _run_spec_rebuild_command(args: argparse.Namespace) -> int:
+    import json as _json
+
+    from .specdrift import load_specdrift_config
+    from .specrebuild import (
+        SpecDriftError as _Err,
+    )
+    from .specrebuild import (
+        apply_rebuild,
+        build_patch_skeleton,
+        run_rebuild,
+    )
+
+    project = Path(args.project)
+    if not project.is_dir():
+        print(f"错误：项目目录不存在: {project}", file=sys.stderr)
+        return 3
+    try:
+        cfg = load_specdrift_config(project)
+        res = run_rebuild(project, cfg=cfg)
+    except _Err as e:
+        print(f"错误：{e}", file=sys.stderr)
+        return 3
+
+    if not res.configured:
+        print(res.notes[0] if res.notes else "spec-drift 未启用")
+        return 0
+
+    if args.json:
+        print(_json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.apply:
+        try:
+            out_path, removed_debt = apply_rebuild(project, res, cfg or _make_default_cfg())
+        except _Err as e:
+            print(f"错误：{e}", file=sys.stderr)
+            return 3
+        print(f"骨架 patch 已写入：{out_path}")
+        print("  内容：带 TODO 的章节模板（cq 不替你写 spec 内容）")
+        print(f"  spec 债已重置：清掉 {removed_debt} 条过期 waiver（未到期的不动）")
+        print("  下一步：逐个补写 TODO，然后 cq spec-gate --mode=hard 验证。")
+        return 0
+
+    skeleton = build_patch_skeleton(res) if res.code_missing else None
+    print(_render_rebuild_md(res, skeleton))
+    print("\n（--draft 模式：未写入任何文件）")
+    return 0
+
+
+def _make_default_cfg():
+    from .specdrift import SpecDriftConfig
+
+    return SpecDriftConfig()
+
+
+def _run_promote_command(args: argparse.Namespace) -> int:
+    from .specdrift import SpecDriftConfig, load_specdrift_config
+    from .specrebuild import collect_decisions, promote_candidates
+
+    project = Path(args.project)
+    if not project.is_dir():
+        print(f"错误：项目目录不存在: {project}", file=sys.stderr)
+        return 3
+    cfg = load_specdrift_config(project) or SpecDriftConfig()
+
+    if args.id:
+        # 指定某条 decision：只输出它的晋升草稿，不写文件
+        records = collect_decisions(project, cfg)
+        hits = [r for r in records if args.id in r.source or (r.slug and args.id in r.slug)]
+        if not hits:
+            print(
+                f"错误：找不到 decision 标识 {args.id!r}（可用文件名或 slug 前缀）", file=sys.stderr
+            )
+            return 3
+        from .specrebuild import _constitution_draft
+
+        print(_constitution_draft(hits))
+        print("（promote 永不自动写入：确认后由你把草稿合入 constitution）")
+        return 0
+
+    cands, notes = promote_candidates(project, cfg)
+    for n in notes:
+        print(f"# {n}")
+    if not cands:
+        print(
+            "无晋升候选（窗口/阈值：promote_window / promote_threshold 可在 .specdrift.toml 调整）"
+        )
+        return 0
+    print(f"晋升候选 {len(cands)} 组：")
+    for i, c in enumerate(cands, 1):
+        print(f"\n候选 {i}：{c['topic']}（{c['count']} 次 / 窗口 {c['window_days']} 天）")
+        for m in c["members"]:  # type: ignore[union-attr]
+            print(f"  - {m['date']}  {m['source']}")  # type: ignore[index]
+        print("\n  草稿：")
+        for ln in str(c["draft"]).splitlines():
+            print(f"  {ln}")
+    print("\n（promote 只输出候选与草稿，永不写文件；合入 constitution 由人确认）")
     return 0
 
 

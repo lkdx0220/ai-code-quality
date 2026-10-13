@@ -57,12 +57,16 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e .
-      - name: 无配置仓库上 spec-gate 旁路
+      - name: 无配置仓库上 spec-drift 全家旁路（一二期）
         run: |
           test ! -f .specdrift.toml
           OUT=$(cq spec-gate --mode=hard); RC=$?
-          echo "$OUT"
-          [ $RC -eq 0 ] && echo "$OUT" | grep -q "未启用"
+          echo "$OUT"; [ $RC -eq 0 ] && echo "$OUT" | grep -q "未启用"
+          OUT2=$(cq spec-rebuild); RC2=$?
+          echo "$OUT2"; [ $RC2 -eq 0 ] && echo "$OUT2" | grep -q "未启用"
+          OUT3=$(cq promote); RC3=$?
+          echo "$OUT3"; [ $RC3 -eq 0 ]
+          test -z "$(git status --porcelain | grep -v audits || true)" && echo "无文件写入 ✓"
       - name: scan 的 adapter 集不含 spec 项
         run: |
           cq scan --project . --no-deepsec --adapters ruff-check > /dev/null

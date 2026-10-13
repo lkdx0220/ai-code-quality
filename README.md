@@ -7,10 +7,11 @@
 说明文件（[`agent-adapters/`](agent-adapters/)），外加一个由它驱动的本地 CLI `cq`——
 把 AI 写的代码按可复现的流程，从"能跑但 AI 味重"带到质量门 A 级。
 
-> **🆕 v0.2.0 · spec-drift（可选）**：采用 spec 驱动工作流（如 OpenSpec）的项目现在可以启用
-> **防漂移门**——`cq spec-gate` 强制"代码变更必须被 proposal 声明"，`cq waiver` 提供带期限的
-> 豁免（到期自动翻红）。**默认关闭**：项目根放 `.specdrift.toml` 才启用，未配置的仓库行为
-> 逐项不变（CI 专项回归锁死）。
+> **🆕 v0.3.0 · spec-drift 二期**：`cq spec-rebuild`（启发式逆向对账——代码符号 vs spec 文本
+> 的**线索清单**，带置信度；`--draft` 只读、`--apply` 落骨架模板并清过期 spec 债）与
+> `cq promote`（反复出现的同类决策 → constitution 晋升候选与草稿，**永不自动写入**）。
+> v0.2.0 起的 **spec-drift 防漂移门**（`spec-gate` 强制变更声明 / `waiver` 带期限豁免）继续可用；
+> **默认关闭**：项目根放 `.specdrift.toml` 才启用，未配置的仓库行为逐项不变（CI 专项回归锁死）。
 > 👉 详见下方 [spec-drift 章节](#spec-driftv020--可选spec-驱动项目的防漂移门)。
 
 ## 它解决什么问题
@@ -254,6 +255,8 @@ cq fix       --run <run_id> [--batch N] [--apply] [--project <path>] [--format j
 # 以下两条需要项目根存在 .specdrift.toml（见「spec-drift」章节），否则旁路
 cq spec-gate --mode soft|hard [--paths a,b] [--project <path>]   # hard 漂移 exit 1
 cq waiver     --reason "必填理由" --ttl 30m|12h|7d [--change <id>] [--project <path>]
+cq spec-rebuild [--from code] [--draft|--apply] [--json] [--project <path>]  # 启发式对账（默认 --draft 只读）
+cq promote     [--id <decision标识>] [--project <path>]   # 晋升候选与草稿，永不写文件
 ```
 
 `scan` 退出码：`0` 完成；`1` 参数错误；`2` 有工具 error/timeout（结果不完整但不丢弃）。
@@ -362,7 +365,12 @@ cq waiver --reason "先写代码，spec 周五前补齐" --ttl 48h   # 有期限
   `ADDED/MODIFIED/REMOVED`，文本按词边界引用变更文件或显式目录形态 `app/`）；时间戳仅软提示。
 - waiver 过期后 `spec-gate --mode=hard` 视为漂移并标红；账本复用 `.cq/suppressions.json`
   （条目带 `kind`，finding 与 waiver 互不干扰）。
-- 二期（规划）：`cq spec-rebuild`（启发式逆向对账）与 `cq promote`（决策晋升候选）。
+- **v0.3.0 · 二期** ✅ `cq spec-rebuild`：AST 提取 `code_paths` 模块/公开符号 → spec 全文词边界匹配
+  + spec 章节标题反向匹配，产出带置信度的**线索清单**（`code_missing` / `spec_missing` /
+  覆盖率，`--json` 可机读）；`--draft` 只读（默认），`--apply` 落骨架模板（带 TODO 章节，
+  不替人写内容）并清掉过期 spec 债。`cq promote`：decisions/ + 账本 waiver 按 slug/关键词
+  聚类（重叠系数），`promote_window`/`promote_threshold` 可配（默认 30d/3），只输出候选与
+  constitution 草稿，**永不写文件**。
 
 ## 路线图
 
@@ -373,4 +381,4 @@ cq waiver --reason "先写代码，spec 周五前补齐" --ttl 48h   # 有期限
   `~/.dsh/skills/ai-code-quality/`）+ Codex/Claude/Cursor 薄适配文件（见 `agent-adapters/`）。
 - ~~**v0.2.0 · spec-drift 一期**~~ ✅ `cq spec-gate` + `cq waiver`（外部需求单驱动，含兼容性红线回归）。
 - **Phase 4**：SonarCloud/SonarQube 接入、自研确定性 AI slop 规则、可选 AI review、
-  spec-drift 二期（spec-rebuild 启发式对账 / promote 决策晋升）、可选 toolkit 插件/MCP。
+  可选 toolkit 插件/MCP。
