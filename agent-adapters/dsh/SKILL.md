@@ -13,6 +13,8 @@ description: "INVOKE THIS SKILL when the user asks to 审查代码, 代码质量
 - 用户要代码质量评级、安全扫描、复杂度/死代码/覆盖率/类型检查
 - 用户要修一轮大改动、做重构、提交前检查
 - 用户要"从 E 修到 A"式的质量提升工作流
+- 用户在 spec 驱动工作流的项目里要"防止代码与 spec 漂移""先写代码后补 spec 需要豁免"
+  （需项目根有 .specdrift.toml）
 </when-to-use>
 
 <when-not-to-use>
@@ -50,6 +52,20 @@ description: "INVOKE THIS SKILL when the user asks to 审查代码, 代码质量
 - 报告只回摘要和产物路径，不要把工具原始输出全贴回来。
 - 汇报注明检测能力来自底层开源工具（ruff/mypy/radon/vulture/pytest/import-linter/DeepSec），cq 只做聚合编排。
 </hard-rules>
+
+## spec 驱动项目（可选 · 项目根有 .specdrift.toml 才生效，否则以下命令全部旁路）
+
+- `cq spec-gate --mode=soft|hard [--base origin/main|--range A..B] [--paths a,b]`：
+  检查本次变更是否被活跃 proposal 声明，hard 漂移 exit 1。
+  **CI 里必须带 `--base origin/main`**（干净 checkout 下工作区恒空，不带会恒绿）；
+  已归档的变更按区间自动参与声明，区间外旧归档不会误放行。
+- `cq waiver --reason=… --ttl 30m|12h|7d [--change <id>]`：先写代码、spec 后补时申请
+  有期限豁免（decisions/ 留痕 + 计入债务账本，过期自动翻红）。
+- `cq spec-rebuild [--draft|--apply] [--json]`：启发式对账线索清单
+  （代码有 spec 无 / spec 有代码无，带置信度）；`--apply` 只落带 TODO 的骨架，
+  不替人写 spec 内容，并清掉过期 spec 债。
+- `cq promote [--id]`：反复出现的同类决策 → constitution 晋升候选（只输出，永不写文件）。
+- 详细判定口径与配置见仓库 README 的 spec-drift 章节。
 
 ## 环境引导（第一次使用必读）
 
