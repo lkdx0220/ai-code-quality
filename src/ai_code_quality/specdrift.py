@@ -84,13 +84,39 @@ def parse_porcelain(text: str) -> list[str]:
     return out
 
 
-def collect_changed_files(project_root: Path) -> list[str]:
+def collect_changed_files(
+    project_root: Path, *, base: str | None = None, range_: str | None = None
+) -> list[str]:
+    """变更集合的三种来源（Issue #1：CI 干净 checkout 下工作区恒空，需要修订区间）：
+
+    - 无参（v0.3.0 行为）：`git status --porcelain`，工作区 vs HEAD（本地用法）；
+    - base=<ref>：`git diff --name-only <ref>...HEAD`（三点 = merge-base，CI 门标准口径）；
+    - range=<A..B>：`git diff --name-only <A..B>` 显式区间（PR 场景）。
+    git 失败（ref 不存在等）抛 SpecDriftError。"""
     from .runner import run_cmd
 
-    r = run_cmd(["git", "-C", str(project_root), "status", "--porcelain"], timeout=30)
+    if base and range_:
+        raise SpecDriftError("--base 与 --range 互斥，只能用一个")
+    if range_:
+        spec = ["diff", "--name-only", range_]
+    elif base:
+        spec = ["diff", "--name-only", f"{base}...HEAD"]
+    else:
+        r = run_cmd(["git", "-C", str(project_root), "status", "--porcelain"], timeout=30)
+        if r.returncode != 0:
+            return []  # 非 git 仓库：无变更可判（spec-gate 会按无变更处理）
+        return parse_porcelain(r.stdout)
+
+    r = run_cmd(["git", "-C", str(project_root), *spec], timeout=60)
     if r.returncode != 0:
-        return []  # 非 git 仓库：无变更可判（spec-gate 会按无变更处理）
-    return parse_porcelain(r.stdout)
+        detail = (r.stderr or r.stdout).strip()[:200]
+        raise SpecDriftError(f"git {' '.join(spec[3:])} 失败（ref 是否存在？）: {detail}")
+    out: list[str] = []
+    for ln in r.stdout.splitlines():
+        p = ln.strip().strip('"')
+        if p:
+            out.append(p)
+    return out
 
 
 def _under_any(path: str, prefixes: list[str]) -> bool:
@@ -303,6 +329,8 @@ def run_spec_gate(
     paths_override: list[str] | None = None,
     cfg: SpecDriftConfig | None = None,
     changed_files: list[str] | None = None,
+    base: str | None = None,
+    range_: str | None = None,
     now: datetime | None = None,
 ) -> SpecGateResult:
     root = project_root.resolve()
@@ -327,7 +355,17 @@ def run_spec_gate(
             soft_hints=["code_paths 为空（.specdrift.toml 或 --paths 均未提供），不检查"],
         )
 
-    files = changed_files if changed_files is not None else collect_changed_files(root)
+    # 变更来源优先级：显式注入（测试）> base/range 区间（CI/PR）> 工作区（v0.3.0 默认）
+    if changed_files is not None:
+        files = changed_files
+    elif base or range_:
+        files = collect_changed_files(root, base=base, range_=range_)
+        if not files:
+            res0 = SpecGateResult(mode=mode, configured=True, exit_code=0)
+            res0.soft_hints = [f"区间内（{base or range_}）受管路径无变更"]
+            return res0
+    else:
+        files = collect_changed_files(root)
     changed_in_scope = [f for f in files if _under_any(f, code_paths)]
     changes = load_active_changes(root, cfg)
     viable = [c for c in changes if c.spec_exists and c.has_delta]

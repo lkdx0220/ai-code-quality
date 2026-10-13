@@ -253,7 +253,7 @@ cq suppress  --run <run_id> --reapply                # 存量豁免按签名对�
 cq fix       --run <run_id> [--batch N] [--apply] [--project <path>] [--format json|md]
 
 # 以下两条需要项目根存在 .specdrift.toml（见「spec-drift」章节），否则旁路
-cq spec-gate --mode soft|hard [--paths a,b] [--project <path>]   # hard 漂移 exit 1
+cq spec-gate --mode soft|hard [--paths a,b] [--base <ref>|--range A..B] [--project <path>]
 cq waiver     --reason "必填理由" --ttl 30m|12h|7d [--change <id>] [--project <path>]
 cq spec-rebuild [--from code] [--draft|--apply] [--json] [--project <path>]  # 启发式对账（默认 --draft 只读）
 cq promote     [--id <decision标识>] [--project <path>]   # 晋升候选与草稿，永不写文件
@@ -357,8 +357,12 @@ soft_timestamp_check = true            # 时间戳只做软提示
 ```
 
 ```bash
-cq spec-gate --mode=hard              # 检查本次变更是否在活跃 proposal 中声明（hard=漂移则 exit 1）
+cq spec-gate --mode=hard              # 检查工作区改动（本地用法）
 cq waiver --reason "先写代码，spec 周五前补齐" --ttl 48h   # 有期限豁免：decisions/ 生成文件 + 计入债务
+
+# CI 门（v0.4.0）：干净 checkout 下用修订区间，否则工作区恒空、门恒绿
+cq spec-gate --mode=hard --base origin/main        # 比对 <ref>...HEAD 的受管改动
+cq spec-gate --mode=hard --range main...feature    # 显式区间（PR 场景）
 ```
 
 - 判定：变更粒度 delta 校验（活跃 proposal 的 `spec_ref` 指向存在的 spec 且含

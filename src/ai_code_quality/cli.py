@@ -154,6 +154,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="受 spec 管辖的路径（逗号分隔，覆盖 .specdrift.toml 的 code_paths）",
     )
+    sg_src = p_sg.add_mutually_exclusive_group()
+    sg_src.add_argument(
+        "--base",
+        default=None,
+        help="比对 <ref>...HEAD 的受管路径改动（CI 场景：干净 checkout 也能当门）",
+    )
+    sg_src.add_argument(
+        "--range",
+        dest="range",
+        default=None,
+        help="显式修订区间（如 main...feature 或 A..B，PR 场景）",
+    )
 
     p_wv = sub.add_parser(
         "waiver",
@@ -255,7 +267,13 @@ def _run_spec_gate_command(args: argparse.Namespace) -> int:
         return 3
     paths = [p.strip() for p in args.paths.split(",") if p.strip()] if args.paths else None
     try:
-        res = run_spec_gate(project, mode=args.mode, paths_override=paths)
+        res = run_spec_gate(
+            project,
+            mode=args.mode,
+            paths_override=paths,
+            base=getattr(args, "base", None),
+            range_=getattr(args, "range", None),
+        )
     except SpecDriftError as e:
         print(f"错误：{e}", file=sys.stderr)
         return 3
