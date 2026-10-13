@@ -322,6 +322,28 @@ class SpecGateResult:
         return self.exit_code == 0
 
 
+def _resolve_changed(
+    root: Path,
+    changed_files: list[str] | None,
+    base: str | None,
+    range_: str | None,
+    mode: str,
+) -> tuple[list[str], SpecGateResult | None]:
+    """变更来源解析：显式注入 > base/range 区间 > 工作区。
+
+    区间内零变更时返回 early 结果（SPEC_OK + 软提示），供调用方直接返回。"""
+    if changed_files is not None:
+        return changed_files, None
+    if base or range_:
+        files = collect_changed_files(root, base=base, range_=range_)
+        if not files:
+            res = SpecGateResult(mode=mode, configured=True, exit_code=0)
+            res.soft_hints = [f"区间内（{base or range_}）受管路径无变更"]
+            return [], res
+        return files, None
+    return collect_changed_files(root), None
+
+
 def run_spec_gate(
     project_root: Path,
     *,
@@ -356,16 +378,10 @@ def run_spec_gate(
         )
 
     # 变更来源优先级：显式注入（测试）> base/range 区间（CI/PR）> 工作区（v0.3.0 默认）
-    if changed_files is not None:
-        files = changed_files
-    elif base or range_:
-        files = collect_changed_files(root, base=base, range_=range_)
-        if not files:
-            res0 = SpecGateResult(mode=mode, configured=True, exit_code=0)
-            res0.soft_hints = [f"区间内（{base or range_}）受管路径无变更"]
-            return res0
-    else:
-        files = collect_changed_files(root)
+    early: SpecGateResult | None
+    files, early = _resolve_changed(root, changed_files, base, range_, mode)
+    if early is not None:
+        return early
     changed_in_scope = [f for f in files if _under_any(f, code_paths)]
     changes = load_active_changes(root, cfg)
     viable = [c for c in changes if c.spec_exists and c.has_delta]
