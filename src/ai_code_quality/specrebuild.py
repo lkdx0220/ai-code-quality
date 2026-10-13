@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 from .specdrift import (
     SpecDriftConfig,
@@ -409,7 +410,7 @@ def promote_candidates(
                 "draft": _constitution_draft(recent),
             }
         )
-    cands.sort(key=lambda c: int(c["count"]), reverse=True)  # type: ignore[arg-type]
+    cands.sort(key=lambda c: cast("int", c["count"]), reverse=True)
     return cands, notes
 
 

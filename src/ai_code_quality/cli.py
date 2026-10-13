@@ -9,7 +9,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from . import __version__
 from .adapters import ADAPTER_NAMES
@@ -425,8 +425,9 @@ def _run_promote_command(args: argparse.Namespace) -> int:
     print(f"晋升候选 {len(cands)} 组：")
     for i, c in enumerate(cands, 1):
         print(f"\n候选 {i}：{c['topic']}（{c['count']} 次 / 窗口 {c['window_days']} 天）")
-        for m in c["members"]:  # type: ignore[union-attr]
-            print(f"  - {m['date']}  {m['source']}")  # type: ignore[index]
+        members = cast("list[dict[str, str]]", c["members"])
+        for m in members:
+            print(f"  - {m['date']}  {m['source']}")
         print("\n  草稿：")
         for ln in str(c["draft"]).splitlines():
             print(f"  {ln}")
