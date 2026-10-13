@@ -102,7 +102,8 @@ def collect_changed_files(
     elif base:
         spec = ["diff", "--name-only", f"{base}...HEAD"]
     else:
-        r = run_cmd(["git", "-C", str(project_root), "status", "--porcelain"], timeout=30)
+        # -uall：展开未跟踪目录（否则新文件的变更被折叠成 "dir/"，无法逐文件匹配）
+        r = run_cmd(["git", "-C", str(project_root), "status", "--porcelain", "-uall"], timeout=30)
         if r.returncode != 0:
             return []  # 非 git 仓库：无变更可判（spec-gate 会按无变更处理）
         return parse_porcelain(r.stdout)
@@ -144,6 +145,33 @@ class ActiveChange:
     text: str  # proposal.md + 该 change 目录下全部 md 的拼接（用于路径引用匹配）
 
 
+def _parse_change_dir(project_root: Path, cfg: SpecDriftConfig, d: Path) -> ActiveChange | None:
+    """proposal.md + spec_ref + delta 标记 → ActiveChange；不合规返回 None。"""
+    proposal = d / "proposal.md"
+    if not proposal.is_file():
+        return None
+    proposal_text = proposal.read_text(encoding="utf-8", errors="replace")
+    m = _SPEC_REF.search(proposal_text)
+    if not m:
+        return None
+    spec_ref = m.group(1)
+    spec_exists = (project_root / cfg.spec_root / spec_ref).exists() or (
+        project_root / cfg.spec_root / (spec_ref + ".md")
+    ).exists()
+    chunks = [proposal_text]
+    for md in sorted(d.rglob("*.md")):
+        if md != proposal:
+            chunks.append(md.read_text(encoding="utf-8", errors="replace"))
+    text = "\n".join(chunks)
+    return ActiveChange(
+        name=d.name,
+        spec_ref=spec_ref,
+        spec_exists=spec_exists,
+        has_delta=bool(_DELTA_MARK.search(text)),
+        text=text,
+    )
+
+
 def load_active_changes(project_root: Path, cfg: SpecDriftConfig) -> list[ActiveChange]:
     root = project_root / cfg.change_root
     if not root.is_dir():
@@ -152,31 +180,35 @@ def load_active_changes(project_root: Path, cfg: SpecDriftConfig) -> list[Active
     for d in sorted(root.iterdir()):
         if not d.is_dir() or d.name.startswith((".", "archive")):
             continue
-        proposal = d / "proposal.md"
-        if not proposal.is_file():
-            continue
-        proposal_text = proposal.read_text(encoding="utf-8", errors="replace")
-        m = _SPEC_REF.search(proposal_text)
-        if not m:
-            continue
-        spec_ref = m.group(1)
-        spec_exists = (project_root / cfg.spec_root / spec_ref).exists() or (
-            project_root / cfg.spec_root / (spec_ref + ".md")
-        ).exists()
-        chunks = [proposal_text]
-        for md in sorted(d.rglob("*.md")):
-            if md != proposal:
-                chunks.append(md.read_text(encoding="utf-8", errors="replace"))
-        text = "\n".join(chunks)
-        out.append(
-            ActiveChange(
-                name=d.name,
-                spec_ref=spec_ref,
-                spec_exists=spec_exists,
-                has_delta=bool(_DELTA_MARK.search(text)),
-                text=text,
-            )
-        )
+        ch = _parse_change_dir(project_root, cfg, d)
+        if ch is not None:
+            out.append(ch)
+    return out
+
+
+def load_archived_changes_in_range(
+    project_root: Path, cfg: SpecDriftConfig, diff_paths: set[str]
+) -> list[ActiveChange]:
+    """区间感知（Issue #2）：归档变更仅在"其目录文件出现在本次检查区间 diff 中"时
+    参与声明匹配——支持"实施 → 归档 → 提交推送"流程，同时不让久远归档永久白名单。
+
+    diff_paths = 本次区间的全部变更路径（git diff --name-only，含移动产生的新路径）。"""
+    root = project_root / cfg.change_root
+    if not root.is_dir():
+        return []
+    out: list[ActiveChange] = []
+    for proposal in sorted(root.rglob("proposal.md")):
+        d = proposal.parent
+        parts = d.relative_to(root).as_posix().split("/")
+        if "archive" not in parts:
+            continue  # 活跃变更由 load_active_changes 处理
+        prefix = d.relative_to(project_root).as_posix() + "/"
+        if not any(p.startswith(prefix) for p in diff_paths):
+            continue  # 不在区间内：不参与（防永久白名单）
+        ch = _parse_change_dir(project_root, cfg, d)
+        if ch is not None:
+            out.append(ch)
+    return out
     return out
 
 
@@ -384,6 +416,10 @@ def run_spec_gate(
         return early
     changed_in_scope = [f for f in files if _under_any(f, code_paths)]
     changes = load_active_changes(root, cfg)
+    if base or range_:
+        # 区间感知（Issue #2）：本次区间内被归档的变更仍参与声明匹配，
+        # 否则"实施→归档→推送"的提交在 CI 会被误报；区间外的旧归档不白名单
+        changes += load_archived_changes_in_range(root, cfg, set(files))
     viable = [c for c in changes if c.spec_exists and c.has_delta]
     now = _aware(now) if now is not None else datetime.now().astimezone()
     actives, expired = active_waivers(root, now)
