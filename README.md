@@ -7,10 +7,10 @@
 说明文件（[`agent-adapters/`](agent-adapters/)），外加一个由它驱动的本地 CLI `cq`——
 把 AI 写的代码按可复现的流程，从"能跑但 AI 味重"带到质量门 A 级。
 
-> **🆕 v0.3.0 · spec-drift 二期**：`cq spec-rebuild`（启发式逆向对账——代码符号 vs spec 文本
-> 的**线索清单**，带置信度；`--draft` 只读、`--apply` 落骨架模板并清过期 spec 债）与
-> `cq promote`（反复出现的同类决策 → constitution 晋升候选与草稿，**永不自动写入**）。
-> v0.2.0 起的 **spec-drift 防漂移门**（`spec-gate` 强制变更声明 / `waiver` 带期限豁免）继续可用；
+> **🆕 spec-drift（可选 · v0.2.0→v0.5.0）**：采用 spec 驱动工作流（如 OpenSpec）的项目可启用
+> **防漂移门**：`cq spec-gate` 强制"代码变更必须被 proposal 声明"（`--base/--range` 支持在
+> CI 干净 checkout 与**已归档变更**场景下正确判定），`cq waiver` 提供带期限的豁免（到期翻红）；
+> `cq spec-rebuild` 启发式对账（代码符号 vs spec 的线索清单）、`cq promote` 决策晋升候选。
 > **默认关闭**：项目根放 `.specdrift.toml` 才启用，未配置的仓库行为逐项不变（CI 专项回归锁死）。
 > 👉 详见下方 [spec-drift 章节](#spec-driftv020--可选spec-驱动项目的防漂移门)。
 
