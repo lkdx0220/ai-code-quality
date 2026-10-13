@@ -230,6 +230,12 @@ pytest tests --basetemp="<可写目录>/pt" -p no:cacheprovider  # 注意：base
 
 看到 `mypy INTERNAL ERROR` 或 `pytest No usable temporary directory` 时，先查写权限再怀疑工具本身。
 
+工具装在工作区 venv（如 `.cq-venv`）时，显式指给 doctor 验证（**不要据此重装工具**）：
+
+```bash
+cq doctor --python "<工作区>/.cq-venv/Scripts/python.exe"
+```
+
 ## 安装与运行
 
 ```bash
