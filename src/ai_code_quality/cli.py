@@ -375,12 +375,13 @@ def _run_spec_rebuild_command(args: argparse.Namespace) -> int:
         print(f"错误：{e}", file=sys.stderr)
         return 3
 
-    if not res.configured:
-        print(res.notes[0] if res.notes else "spec-drift 未启用")
+    if args.json:
+        # 未配置仓库同样输出 JSON（configured=false），供 Agent/脚本统一消费
+        print(_json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
-    if args.json:
-        print(_json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+    if not res.configured:
+        print(res.notes[0] if res.notes else "spec-drift 未启用")
         return 0
 
     if args.apply:
