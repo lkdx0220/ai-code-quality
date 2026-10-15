@@ -24,6 +24,9 @@ description: "INVOKE THIS SKILL when the user asks to 审查代码, 代码质量
 </when-not-to-use>
 
 <workflow>
+0. **工具优先级**：若当前会话已装配 `cq_*` 工具（安装了 dsh-ai-code-quality 插件时出现，
+   如 cq_doctor / cq_scan / cq_gate），**优先调用插件工具**——参数类型化、输出已截断；
+   插件不存在时才回退本文件的 shell 命令形式。两者能力等价，切换无需改变工作流顺序。
 1. 陌生环境先 `cq doctor --format json`；缺工具时把 install 命令原样转告用户，
    征得同意再安装（绝不静默 pip install）。deepsec 缺失可降级（安全维度无结论）。
 2. `cq scan --project <路径>` 全量扫描，读 audits/<run_id>/summary.json 的 tools[]：
