@@ -24,7 +24,7 @@
 | harness | 路径 |
 |---|---|
 | ZCode | `~/.zcode/skills/ai-code-quality/SKILL.md` |
-| DSH（各 home） | `<每个 home>/skills/ai-code-quality/SKILL.md` |
+| DSH（各 home） | `<每个 home>/skills/ai-code-quality/SKILL.md`；**实际主用 home 为 `~/.dsh-official`**（官方客户端，`launch-official-dsh.cmd` 启动） |
 | Claude Code | `~/.claude/skills/ai-code-quality/SKILL.md` |
 | Codex CLI | `~/.codex/skills/ai-code-quality/SKILL.md` |
 | Trae（CN） | `~/.trae-cn/skills/ai-code-quality/SKILL.md` |
@@ -44,3 +44,8 @@ mkdir -p "$APPDATA/kimi-desktop/daimon-share/daimon/skills/ai-code-quality" &&
 ```
 
 注意：harness 一般在**会话启动时**扫描 skills，装完/更新后要新开会话才会生效。
+
+**DSH 工具插件的安装位置同理分 home**：profile 级插件装在
+`<home>/profiles/desktop/node_modules/`（junction 到插件目录）+ `package.json` 依赖 +
+`dsh.profile.bundles` 数组 + `cordis.patch.yml` 条目，四件套缺一不可；
+重启客户端触发装配。经验教训：装错 home 等于没装（两个客户端内核不同、home 隔离）。
