@@ -57,3 +57,18 @@ def test_main_doctor_json(tmp_path, capsys, monkeypatch):
     data = json.loads(capsys.readouterr().out)
     assert data["total"] == 8
     assert rc in (0, 2)
+
+
+def test_scan_json_output_contains_tools_and_notes(tmp_path):
+    """N2 兑现断言：scan --format json 的 summary 必须携带 tools[] 与 notes（缺一即假绿）。"""
+    import json as _json
+
+    from ai_code_quality.config import Config
+    from ai_code_quality.scan import run_scan
+
+    out = run_scan(tmp_path, cfg=Config.load(tmp_path))
+    assert isinstance(out.summary["tools"], list) and len(out.summary["tools"]) > 0
+    assert "notes" in out.summary
+    # 序列化往返：Agent/插件消费的就是这份 JSON
+    payload = _json.dumps(out.summary, ensure_ascii=False)
+    assert '"tools"' in payload and '"notes"' in payload
