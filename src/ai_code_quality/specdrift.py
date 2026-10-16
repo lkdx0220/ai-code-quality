@@ -209,7 +209,6 @@ def load_archived_changes_in_range(
         if ch is not None:
             out.append(ch)
     return out
-    return out
 
 
 def _declared(file_rel: str, changes: list[ActiveChange]) -> ActiveChange | None:
@@ -391,29 +390,53 @@ def run_spec_gate(
     if cfg is None:
         cfg = load_specdrift_config(root)
     if cfg is None:
-        return SpecGateResult(
-            mode=mode,
-            configured=False,
-            exit_code=0,
-            soft_hints=[f"未找到 {SPECDRIFT_CONFIG}，spec-drift 未启用（未配置的项目不受影响）"],
-        )
-    if mode not in ("soft", "hard"):
-        raise SpecDriftError(f"mode 只支持 soft|hard，收到 {mode!r}")
+        return _unconfigured_result(mode)
+    _validate_mode(mode)
 
     code_paths = [p.strip() for p in (paths_override or cfg.code_paths) if p.strip()]
     if not code_paths:
-        return SpecGateResult(
-            mode=mode,
-            configured=True,
-            exit_code=0,
-            soft_hints=["code_paths 为空（.specdrift.toml 或 --paths 均未提供），不检查"],
-        )
+        return _empty_paths_result(mode)
 
     # 变更来源优先级：显式注入（测试）> base/range 区间（CI/PR）> 工作区（v0.3.0 默认）
-    early: SpecGateResult | None
     files, early = _resolve_changed(root, changed_files, base, range_, mode)
     if early is not None:
         return early
+    return _evaluate_gate(root, cfg, mode, code_paths, files, base, range_, now)
+
+
+def _unconfigured_result(mode: str) -> SpecGateResult:
+    return SpecGateResult(
+        mode=mode,
+        configured=False,
+        exit_code=0,
+        soft_hints=[f"未找到 {SPECDRIFT_CONFIG}，spec-drift 未启用（未配置的项目不受影响）"],
+    )
+
+
+def _empty_paths_result(mode: str) -> SpecGateResult:
+    return SpecGateResult(
+        mode=mode,
+        configured=True,
+        exit_code=0,
+        soft_hints=["code_paths 为空（.specdrift.toml 或 --paths 均未提供），不检查"],
+    )
+
+
+def _validate_mode(mode: str) -> None:
+    if mode not in ("soft", "hard"):
+        raise SpecDriftError(f"mode 只支持 soft|hard，收到 {mode!r}")
+
+
+def _evaluate_gate(
+    root: Path,
+    cfg: SpecDriftConfig,
+    mode: str,
+    code_paths: list[str],
+    files: list[str],
+    base: str | None,
+    range_: str | None,
+    now: datetime | None,
+) -> SpecGateResult:
     changed_in_scope = [f for f in files if _under_any(f, code_paths)]
     changes = load_active_changes(root, cfg)
     if base or range_:
@@ -421,8 +444,8 @@ def run_spec_gate(
         # 否则"实施→归档→推送"的提交在 CI 会被误报；区间外的旧归档不白名单
         changes += load_archived_changes_in_range(root, cfg, set(files))
     viable = [c for c in changes if c.spec_exists and c.has_delta]
-    now = _aware(now) if now is not None else datetime.now().astimezone()
-    actives, expired = active_waivers(root, now)
+    current_time = _aware(now) if now is not None else datetime.now().astimezone()
+    actives, expired = active_waivers(root, current_time)
     waived_by_expiry = len(expired) > 0
 
     res = SpecGateResult(

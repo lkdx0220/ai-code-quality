@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -33,7 +33,7 @@ def _cfg(tmp_path, code_paths=("app/",), **kw):
     return c
 
 
-NOW = datetime(2026, 10, 12, 12, 0, 0)
+NOW = datetime(2026, 10, 12, 12, 0, 0, tzinfo=UTC)
 
 
 # ---------- ttl / slug ----------

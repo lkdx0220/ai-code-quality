@@ -336,12 +336,6 @@ def _aware(dt: datetime) -> datetime:
     return dt.astimezone() if dt.tzinfo is None else dt
 
 
-def _jaccard(a: set[str], b: set[str]) -> float:
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
 def _overlap(a: set[str], b: set[str]) -> float:
     """重叠系数 = 交集 / 较小集合。中文短标题无分词、token 少，Jaccard 天然偏低，
     重叠系数对'共享关键 token'更敏感（如「密钥轮换 每月」vs「密钥轮换 每季度」）。"""

@@ -55,12 +55,49 @@ def run_scan(
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     git_info = get_git_info(root)
-    targets: ScanTargets = resolve_targets(
-        root, scope=scope, git_info=git_info, respect_gitignore=cfg.respect_gitignore
+    targets, ctx = _build_context(root, run_dir, raw_dir, run_id, scope, cfg, git_info)
+    cfg.enabled_adapters = enabled_adapters or cfg.enabled_adapters
+
+    try:
+        adapters = get_adapters(cfg.enabled_adapters)
+    except ValueError as e:
+        raise ValueError(str(e)) from e
+
+    results = [adapter.safe_run(ctx) for adapter in adapters]
+
+    findings = _unique_findings(sort_findings([f for r in results for f in r.findings]))
+
+    # 应用项目级豁免（.cq/suppressions.json）：按 id 或行号无关签名匹配，命中 → status=suppressed
+    _apply_suppressions(root, findings)
+
+    summary = _build_summary(run_id, root, scope, cfg, git_info, targets, results, findings)
+
+    # ---- 落盘（全部经 redact） ----
+    _write_artifacts(run_dir, run_id, summary, findings)
+
+    exit_code = 2 if any(r.status in ("error", "timeout") for r in results) else 0
+    return ScanOutput(
+        run_id=run_id,
+        run_dir=run_dir,
+        summary=summary,
+        findings=findings,
+        results=results,
+        exit_code=exit_code,
     )
 
-    # 解释器兜底：cq 装在 uv tool 隔离 venv 且未显式配置 python 时，
-    # 按实际缺失的核心工具集合，自动改用工具链全齐的系统解释器（说明进报告备注）
+
+def _build_context(
+    root: Path,
+    run_dir: Path,
+    raw_dir: Path,
+    run_id: str,
+    scope: str,
+    cfg: Config,
+    git_info,
+) -> tuple[ScanTargets, ScanContext]:
+    targets = resolve_targets(
+        root, scope=scope, git_info=git_info, respect_gitignore=cfg.respect_gitignore
+    )
     from .doctor import required_missing, resolve_tool_python
 
     missing = required_missing(cfg.python)
@@ -69,8 +106,7 @@ def run_scan(
         if python_note:
             cfg.python = chosen
             targets.notes.append(python_note)
-
-    ctx = ScanContext(
+    return targets, ScanContext(
         project_root=root,
         run_dir=run_dir,
         raw_dir=raw_dir,
@@ -84,53 +120,44 @@ def run_scan(
         mypy_config=targets.mypy_config,
         notes=list(targets.notes),
     )
-    cfg.enabled_adapters = enabled_adapters or cfg.enabled_adapters
 
-    try:
-        adapters = get_adapters(cfg.enabled_adapters)
-    except ValueError as e:
-        raise ValueError(str(e)) from e
 
-    results: list[AdapterResult] = []
-    for adapter in adapters:
-        results.append(adapter.safe_run(ctx))
-
-    # 不变量：findings id 唯一。adapter 层去重后的防御性兜底——重复 id 会破坏
-    # diff 的计数配对与 suppress 的签名对齐（外部缺陷报告 §7.1 实测）。
-    findings = sort_findings([f for r in results for f in r.findings])
+def _unique_findings(findings: list[Finding]) -> list[Finding]:
     seen_ids: set[str] = set()
-    deduped: list[Finding] = []
-    for f in findings:
-        if f.id in seen_ids:
+    unique: list[Finding] = []
+    for item in findings:
+        if item.id in seen_ids:
             continue
-        seen_ids.add(f.id)
-        deduped.append(f)
-    findings = deduped
+        seen_ids.add(item.id)
+        unique.append(item)
+    return unique
 
-    # 应用项目级豁免（.cq/suppressions.json）：按 id 或行号无关签名匹配，命中 → status=suppressed
+
+def _apply_suppressions(root: Path, findings: list[Finding]) -> None:
     from . import suppress as suppress_mod
 
-    sup_items = suppress_mod.load(root)
-    sup_ids, sup_sigs = suppress_mod.suppression_ids(root)
-    for f in findings:
-        hit = None
-        if f.id in sup_ids:
-            hit = next(x for x in sup_items if str(x.get("id")) == f.id)
-        else:
-            sig = (f.source, f.rule, f.file, f.message)
-            if sig in sup_sigs:
-                hit = next(
-                    (x for x in sup_items if suppress_mod._entry_sig(x) == sig),
-                    None,
-                )
+    items = suppress_mod.load(root)
+    ids, signatures = suppress_mod.suppression_ids(root)
+    for item in findings:
+        hit = _find_suppression(item, items, ids, signatures, suppress_mod)
         if hit is not None:
-            f.status = "suppressed"
-            f.suppression_action = hit.get("action", "")
-            f.suppression_reason = hit.get("reason", "")
+            item.status = "suppressed"
+            item.suppression_action = hit.get("action", "")
+            item.suppression_reason = hit.get("reason", "")
 
-    summary = _build_summary(run_id, root, scope, cfg, git_info, targets, results, findings)
 
-    # ---- 落盘（全部经 redact） ----
+def _find_suppression(item, entries, ids, signatures, suppress_mod):
+    if item.id in ids:
+        return next(entry for entry in entries if str(entry.get("id")) == item.id)
+    signature = (item.source, item.rule, item.file, item.message)
+    if signature not in signatures:
+        return None
+    return next((entry for entry in entries if suppress_mod._entry_sig(entry) == signature), None)
+
+
+def _write_artifacts(
+    run_dir: Path, run_id: str, summary: dict[str, object], findings: list[Finding]
+) -> None:
     (run_dir / "summary.json").write_text(
         json.dumps(redact_obj(summary), ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -145,16 +172,6 @@ def run_scan(
     from .report import build_report_md
 
     (run_dir / "report.md").write_text(build_report_md(summary, findings), encoding="utf-8")
-
-    exit_code = 2 if any(r.status in ("error", "timeout") for r in results) else 0
-    return ScanOutput(
-        run_id=run_id,
-        run_dir=run_dir,
-        summary=summary,
-        findings=findings,
-        results=results,
-        exit_code=exit_code,
-    )
 
 
 def _build_summary(

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -14,7 +14,7 @@ from ai_code_quality.specrebuild import (
     run_rebuild,
 )
 
-NOW = datetime(2026, 10, 12, 12, 0, 0)
+NOW = datetime(2026, 10, 12, 12, 0, 0, tzinfo=UTC)
 
 
 def _mk(root, rel, content="x"):
