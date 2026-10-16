@@ -95,7 +95,17 @@ def run_scan(
     for adapter in adapters:
         results.append(adapter.safe_run(ctx))
 
+    # 不变量：findings id 唯一。adapter 层去重后的防御性兜底——重复 id 会破坏
+    # diff 的计数配对与 suppress 的签名对齐（外部缺陷报告 §7.1 实测）。
     findings = sort_findings([f for r in results for f in r.findings])
+    seen_ids: set[str] = set()
+    deduped: list[Finding] = []
+    for f in findings:
+        if f.id in seen_ids:
+            continue
+        seen_ids.add(f.id)
+        deduped.append(f)
+    findings = deduped
 
     # 应用项目级豁免（.cq/suppressions.json）：按 id 或行号无关签名匹配，命中 → status=suppressed
     from . import suppress as suppress_mod

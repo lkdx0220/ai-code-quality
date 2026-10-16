@@ -1,3 +1,5 @@
+import json
+
 from ai_code_quality.adapters.deepsec_adapter import SECRET_EVIDENCE_PLACEHOLDER, _safe_evidence
 from ai_code_quality.adapters.mypy_adapter import parse_mypy_output
 from ai_code_quality.adapters.pytest_cov import parse_coverage_json, parse_pytest_failures
@@ -80,3 +82,51 @@ def test_parse_coverage_json():
     assert cov and cov["percent"] == 45.5
     assert parse_coverage_json("{}") is None
     assert parse_coverage_json("nope") is None
+
+
+def test_radon_double_reported_methods_deduped(tmp_path):
+    """Issue（外部报告 §7.1）：radon 对 method 同时输出 class 嵌套与顶层两份，
+    展开后同一 method 出现两次 → _cc_findings 必须按 id 去重（否则 diff 计数错乱）。"""
+    from ai_code_quality.adapters.base import ScanContext
+    from ai_code_quality.adapters.radon_adapter import RadonAdapter
+    from ai_code_quality.config import Config
+
+    ctx = ScanContext(
+        project_root=tmp_path,
+        run_dir=tmp_path / "a" / "r1",
+        raw_dir=tmp_path / "a" / "r1" / "raw",
+        run_id="r1",
+        cfg=Config(),
+        targets=[],
+        source_dirs=[],
+        has_tests=False,
+        test_paths=[],
+        importlinter_config=None,
+        mypy_config=None,
+    )
+    stdout = json.dumps(
+        {
+            "x.py": [
+                {
+                    "type": "class",
+                    "name": "MypyAdapter",
+                    "rank": "D",
+                    "lineno": 26,
+                    "complexity": 23,
+                    "methods": [
+                        {
+                            "type": "method",
+                            "name": "run",
+                            "rank": "D",
+                            "lineno": 31,
+                            "complexity": 22,
+                        }
+                    ],
+                },
+                {"type": "method", "name": "run", "rank": "D", "lineno": 31, "complexity": 22},
+            ]
+        }
+    )
+    findings = RadonAdapter._cc_findings(RadonAdapter(), ctx, stdout, "raw/radon-cc.json")
+    runs_at_31 = [f for f in findings if f.rule == "cc-D" and f.line == 31]
+    assert len(runs_at_31) == 1, findings  # 嵌套与顶层两份 run → 去重后 1 条

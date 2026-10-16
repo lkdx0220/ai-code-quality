@@ -145,6 +145,7 @@ class RadonAdapter(Adapter):
     def _cc_findings(self, ctx: ScanContext, stdout: str, cc_raw: str) -> list[Finding]:
         worst_allowed = _RANK_ORDER.get(ctx.cfg.max_cc_rank.upper(), 3)
         findings: list[Finding] = []
+        emitted: set[str] = set()
         for file, blocks in _parse_cc_json(stdout).items():
             # radon 对解析不了的文件输出字符串 "error" 而不是块列表
             if not isinstance(blocks, list):
@@ -166,21 +167,25 @@ class RadonAdapter(Adapter):
                 rank = str(b.get("rank", "A"))
                 if _RANK_ORDER.get(rank, 0) < worst_allowed:
                     continue
-                findings.append(
-                    finding(
-                        ctx,
-                        source="radon",
-                        category="maintainability",
-                        severity=CC_SEVERITY.get(rank, "medium"),
-                        file=file,
-                        line=int(cast("int", b.get("lineno") or 0)),
-                        message=f"{kind} '{b.get('name', '?')}' 圈复杂度 "
-                        f"{b.get('complexity', '?')}（rank {rank}）",
-                        rule=f"cc-{rank}",
-                        fix_hint="拆分函数/分支，目标 rank ≤ C",
-                        raw_ref=cc_raw,
-                    )
+                f = finding(
+                    ctx,
+                    source="radon",
+                    category="maintainability",
+                    severity=CC_SEVERITY.get(rank, "medium"),
+                    file=file,
+                    line=int(cast("int", b.get("lineno") or 0)),
+                    message=f"{kind} '{b.get('name', '?')}' 圈复杂度 "
+                    f"{b.get('complexity', '?')}（rank {rank}）",
+                    rule=f"cc-{rank}",
+                    fix_hint="拆分函数/分支，目标 rank ≤ C",
+                    raw_ref=cc_raw,
                 )
+                # radon 对 method 会同时输出"class 内嵌套"与"顶层"两份相同块，
+                # 展开后内容完全一致 → 按 id 去重，避免 diff/suppress 签名对齐错乱
+                if f.id in emitted:
+                    continue
+                emitted.add(f.id)
+                findings.append(f)
         return findings
 
     def _scan_mi(
